@@ -138,7 +138,9 @@ export class TaskParser {
     const taskNameRegex = /^[-+*]\s*\[\s*.\s*\]\s*/;
     const linkRegex = /\[\[([^\[\]]*\|)?([^\[\]]+)\]\]/g;
     const markdownLinkRegex = /\[([^\[\]]+)\]\(.+?\)/g;
-    const estimateRegex = new RegExp(`\\${this.separator}\\s*\\d+\\s*`);
+    const estimateRegex = new RegExp(
+      `\\${this.separator}\\s*(?:\\d+:\\d{2}|\\d+)\\s*`
+    );
     const startTimeRegex = new RegExp(
       `\\${this.startTimeDelimiter}\\s*(?:\\d{4}-\\d{2}-\\d{2}T)?(\\d{1,2}:?\\d{2})`
     );
@@ -217,10 +219,21 @@ export class TaskParser {
     return null;
   }
 
+  // Accepts both `H:MM` (e.g. `; 1:30`) and plain integer minutes (e.g. `; 90`).
+  // Always returns the duration normalized to a minutes string so downstream
+  // arithmetic (Number(estimate), setMinutes, ...) keeps working unchanged.
   public parseEstimate(task: string): string | null {
-    const regex = new RegExp(`\\${this.separator}\\s*(\\d+)\\s*`);
+    const regex = new RegExp(`\\${this.separator}\\s*(\\d+:\\d{2}|\\d+)`);
     const match = task.match(regex);
-    return match ? match[1] : null;
+    if (!match) {
+      return null;
+    }
+    const value = match[1];
+    if (value.includes(':')) {
+      const [hours, minutes] = value.split(':').map(Number);
+      return String(hours * 60 + minutes);
+    }
+    return value;
   }
 
   private parseCategories(taskName: string): string[] {
