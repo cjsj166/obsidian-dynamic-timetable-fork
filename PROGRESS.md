@@ -79,7 +79,22 @@ Tasks Chute v0.1.0를 향한 단계. 각 단계는 **이전 단계가 동작해�
 
 ## Done This Sprint
 
-(아직 없음)
+- **Phase 1 — 시간 추적·통계 제거** (2026-06-01):
+  - 삭제: `StatisticsView.tsx`, `StatisticsViewComponent.tsx`
+  - `TaskManager.ts`: `initializeTasks`만 남기고 write-back/dictionary/complete/interrupt/통계 계산 제거
+  - `Commands.ts`: `completeTask`/`interruptTask`/`toggleStatistics` 제거
+  - `main.ts`: Statistics 뷰·명령 제거, Complete/Interrupt 명령 제거, `customUrlScheme`/`pathToDictionary` 설정 제거, `initTimetableView`의 카테고리색상 대기 루프(무태스크 시 무한루프 잠재버그) 제거
+  - `Button.tsx`: Complete/Interrupt 버튼 제거 (새로고침 버튼만 유지)
+  - `TaskParser.ts`: `getCategoryPerformance` 제거
+  - `Settings.ts`: Custom URL Scheme·Path to Dictionary 설정 + 미사용 `createTextAreaSetting` 제거
+  - `npm run build` 초록 확인, vault 배포 완료. 번들 1.38MB→1.04MB (chart.js 트리셰이킹).
+  - **유지(보류)**: 라이브 진행률 바·남은시간·overdue 알림 → Phase 5 뷰 재작성 시 제거 여부 결정.
+
+- **Phase 2 — duration 파싱 (`H:MM` + 정수)** (2026-06-01):
+  - `TaskParser.parseEstimate`: `; 1:30`과 `; 90` 둘 다 인식, 내부적으로 분(minutes) 문자열로 정규화 → 하위 계산 무변경.
+  - `TaskParser.parseTaskName`의 estimate 제거 정규식도 H:MM 인식하도록 수정.
+  - `npm run build` 초록, 배포 완료.
+  - **알려진 표시 한계**: Estimate 컬럼은 정규화된 분("90")을 표시 — 입력이 `1:30`이어도 "90"으로 보임. H:MM 표시는 Phase 5 뷰 재작성에서.
 
 ## Decisions Log
 
@@ -96,6 +111,13 @@ Tasks Chute v0.1.0를 향한 단계. 각 단계는 **이전 단계가 동작해�
 | 2026-05-31 | 시간 추적 (start/stop) 제외 | 사용자 명시 요구 — 마찰 회피 |
 | 2026-05-31 | duration 형식은 `H:MM` 단일 형식 강제 | 파싱 모호성 제거 |
 | 2026-05-31 | capacity_overrides는 일련번호 대신 실제 날짜 사용 | 자정 마이그레이션 회피 |
+| 2026-06-01 | Fork base 정정: obsidian-tasks가 아니라 **현재 Dynamic Timetable 레포 개조** | 실제 레포가 dynamic-timetable이고 이미 TaskChute 영감 파서/타임테이블 보유. 재작성 비용 회피 |
+| 2026-06-01 | React 유지 (ARCHITECTURE의 "순수 DOM" 규칙 폐기) | 기존 코드 전부 React. 재작성 이득 없음 |
+| 2026-06-01 | 시간 추적 전부 제거 (Complete/Interrupt, dictionary 통계, custom URL, 실제시간 write-back) | 사용자 결정. duration으로 시작/종료 투영만 필요 |
+| 2026-06-01 | Statistics 뷰 완전 제거 | 실제시간 없으면 예상 vs 실제 비교 무의미 |
+| 2026-06-01 | duration은 H:MM과 정수(분) 둘 다 허용 (SPEC의 "정수=에러" 완화) | 기존 노트 하위호환 |
+| 2026-06-01 | manifest id/모바일 그대로 유지 (isDesktopOnly 안 바꿈) | 기존 설정 보존, 모바일 비활성화에 비용 들일 필요 없음 |
+| 2026-06-01 | 노트 모델 = Daily Notes 플러그인 + YYYY-MM-DD.md 확정 | rollover/below 투영의 날짜→파일 해석 근거 |
 
 ---
 
