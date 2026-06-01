@@ -102,6 +102,11 @@ Tasks Chute v0.1.0를 향한 단계. 각 단계는 **이전 단계가 동작해�
   - Jest 셋업(ts-jest) + `tests/core/` 22 테스트 통과.
   - **미연결**: 코어는 아직 뷰에 연결 안 됨. 기존 파서로 동작 유지 → Phase 5에서 교체.
 
+- **Phase 4 — 순수 투영 (today + below)** (2026-06-01):
+  - `src/core/projection.ts`: `capacityFor`, `projectToday`(running_clock 캐스케이드 + buffer + work total/over-budget), `projectBelow`(date-pinned 예약 + 비-pinned 큐를 일자 capacity로 분배, day 경계 분할, over-booked 감지, 무한루프 가드).
+  - `tests/core/projection.test.ts`: SPEC fixture 1~4 + over-booked 검증. 전체 29 테스트 통과.
+  - 여전히 뷰 미연결 → Phase 5에서 연결.
+
 ## Decisions Log
 
 | Date | Decision | Reason |
