@@ -96,6 +96,12 @@ Tasks Chute v0.1.0를 향한 단계. 각 단계는 **이전 단계가 동작해�
   - `npm run build` 초록, 배포 완료.
   - **알려진 표시 한계**: Estimate 컬럼은 정규화된 분("90")을 표시 — 입력이 `1:30`이어도 "90"으로 보임. H:MM 표시는 Phase 5 뷰 재작성에서.
 
+- **Phase 3 — 문서 모델 (순수 파서)** (2026-06-01):
+  - 신규 `src/core/` (Obsidian 비의존, 단위테스트 가능): `types.ts`, `time.ts`, `date.ts`, `document.ts`.
+  - `parseDocument`: frontmatter(`working_hours` 기본 7:00, `capacity_overrides` 부호 필수) + 본문 `---` divider로 today/below 분리 + 태스크 라인 파싱(상태/이름/@anchor(시각 또는 날짜+시각)/duration/#태그, 절대 lineNo 보존).
+  - Jest 셋업(ts-jest) + `tests/core/` 22 테스트 통과.
+  - **미연결**: 코어는 아직 뷰에 연결 안 됨. 기존 파서로 동작 유지 → Phase 5에서 교체.
+
 ## Decisions Log
 
 | Date | Decision | Reason |
