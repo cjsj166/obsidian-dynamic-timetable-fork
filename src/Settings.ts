@@ -69,34 +69,6 @@ export class DynamicTimetableSettingTab extends PluginSettingTab {
       ? this.plugin.settings.headerNames.join(', ')
       : '';
     this.createHeaderNamesSetting(headerNames);
-    const pathToDictionaryDesc = this.containerEl.createEl('p');
-    pathToDictionaryDesc.style.marginBlockStart = '0em';
-    pathToDictionaryDesc.style.marginBlockEnd = '0em';
-
-    pathToDictionaryDesc.appendChild(
-      createEl('span', {
-        text: 'Enter the path to the custom dictionary file for ',
-      })
-    );
-    pathToDictionaryDesc.appendChild(
-      createEl('a', {
-        text: 'Various Complements',
-        href: 'obsidian://show-plugin?id=various-complements',
-      })
-    );
-    pathToDictionaryDesc.appendText('.');
-    this.createTextSetting(
-      'Path to Dictionary for Suggestions',
-      'pathToDictionary',
-      pathToDictionaryDesc,
-      'path/to/dictionary.md'
-    );
-    this.createTextAreaSetting(
-      'Custom URL Scheme',
-      'customUrlScheme',
-      'Enter the URL scheme you want to execute when a task is completed. You can use the following placeholders: {{minutes}}, {{seconds}}, {{taskName}}',
-      'your-app-scheme://doSomething?minutes={{minutes}}&seconds={{seconds}}&taskName={{taskName}}'
-    );
     this.createToggleSetting(
       'Apply Background Color by Category (tag)',
       'applyBackgroundColorByCategory',
@@ -124,29 +96,6 @@ export class DynamicTimetableSettingTab extends PluginSettingTab {
         .setValue((this.plugin.settings[key] as string) || '');
       el.inputEl.addEventListener('blur', async (event) => {
         const value = (event.target as HTMLInputElement).value;
-        await this.plugin.updateSetting(key, value);
-      });
-      return el;
-    });
-  }
-
-  createTextAreaSetting(
-    name: string,
-    key: string,
-    desc?: string,
-    placeholder?: string
-  ) {
-    const setting = new Setting(this.containerEl).setName(name);
-    if (desc) {
-      setting.setDesc(desc);
-    }
-    setting.addTextArea((text) => {
-      const el = text
-        .setPlaceholder(placeholder || '')
-        .setValue((this.plugin.settings[key] as string) || '');
-      el.inputEl.style.height = '60px';
-      el.inputEl.addEventListener('blur', async (event) => {
-        const value = (event.target as HTMLTextAreaElement).value;
         await this.plugin.updateSetting(key, value);
       });
       return el;
@@ -221,7 +170,6 @@ export class DynamicTimetableSettingTab extends PluginSettingTab {
             this.plugin.settings.categoryColors[index].category = value;
             await this.plugin.saveData(this.plugin.settings);
             await this.plugin.updateOpenViews('Timetable');
-            await this.plugin.updateOpenViews('Statistics');
           });
 
           return el;
@@ -231,7 +179,6 @@ export class DynamicTimetableSettingTab extends PluginSettingTab {
             this.plugin.settings.categoryColors[index].color = value;
             await this.plugin.saveData(this.plugin.settings);
             await this.plugin.updateOpenViews('Timetable');
-            await this.plugin.updateOpenViews('Statistics');
           });
         })
         .addButton((button) => {
