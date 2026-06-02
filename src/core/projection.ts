@@ -19,8 +19,14 @@ export interface TodayRow {
   task: TaskLine;
   startMin: number; // minutes-of-day
   endMin: number; // minutes-of-day (may exceed 1440 if the plan runs past midnight)
-  /** anchor - running_clock when the task has an `@` time, else null. */
-  bufferMin: number | null;
+  /** True when this row is a fixed `@`-time appointment. */
+  fixed: boolean;
+  /** 0-based index of this segment within its task. */
+  segmentIndex: number;
+  /** Total number of segments the task was split into (1 when not split). */
+  segmentCount: number;
+  /** True when a fixed appointment overlaps another fixed appointment. */
+  conflict: boolean;
 }
 
 export interface TodayProjection {
@@ -29,44 +35,151 @@ export interface TodayProjection {
   workTotalMin: number;
   capacityMin: number;
   overBudget: boolean;
+  /** True when any two fixed appointments overlap in time. */
+  hasConflict: boolean;
+}
+
+interface Interval {
+  start: number;
+  end: number;
 }
 
 /**
- * Project cumulative start/end clock times for the today section.
- * `nowMin` and `capacityMin` are minutes; capacity is working_hours + today's
+ * Fill `dur` minutes of flexible work starting at `start`, flowing around the
+ * `occupied` (fixed-appointment) intervals — splitting into multiple segments
+ * when the work would otherwise overlap an appointment. `occupied` must be
+ * sorted by start and contain only non-zero-width intervals.
+ */
+function fillFlexible(
+  start: number,
+  dur: number,
+  occupied: Interval[]
+): { segments: Interval[]; endClock: number } {
+  const segments: Interval[] = [];
+  let t = start;
+  let remaining = dur;
+  let guard = 0;
+
+  while (remaining > 0 && guard++ < 100000) {
+    const inside = occupied.find((iv) => iv.start <= t && t < iv.end);
+    if (inside) {
+      t = inside.end;
+      continue;
+    }
+    let nextStart = Infinity;
+    for (const iv of occupied) {
+      if (iv.start > t && iv.start < nextStart) nextStart = iv.start;
+    }
+    const free = nextStart - t;
+    const take = Math.min(remaining, free);
+    segments.push({ start: t, end: t + take });
+    t += take;
+    remaining -= take;
+  }
+
+  return { segments, endClock: t };
+}
+
+/**
+ * Project the today section. Fixed `@`-time tasks are immovable appointments
+ * placed at their anchor; flexible tasks fill the gaps in document order,
+ * starting at `dayStartMin`, and are split around the appointments. Rows are
+ * returned sorted by start time. `capacityMin` is working_hours + today's
  * override (compute with capacityFor at the call site).
  */
 export function projectToday(
   today: TaskLine[],
-  nowMin: number,
+  dayStartMin: number,
   capacityMin: number
 ): TodayProjection {
-  let runningClock =
-    today.length > 0 && today[0].anchorMinutes !== null
-      ? today[0].anchorMinutes
-      : nowMin;
+  // 1. Fixed appointments, in time order, with conflict detection.
+  const fixed = today
+    .filter((t) => t.anchorMinutes !== null)
+    .map((t) => ({
+      task: t,
+      start: t.anchorMinutes as number,
+      end: (t.anchorMinutes as number) + (t.durationMin ?? 0),
+      conflict: false,
+    }))
+    .sort((a, b) => a.start - b.start || a.end - b.end);
+
+  for (let i = 1; i < fixed.length; i++) {
+    if (fixed[i].start < fixed[i - 1].end) {
+      fixed[i].conflict = true;
+      fixed[i - 1].conflict = true;
+    }
+  }
+  const hasConflict = fixed.some((f) => f.conflict);
+
+  // Only non-zero-width appointments block flexible work.
+  const occupied: Interval[] = fixed
+    .filter((f) => f.end > f.start)
+    .map((f) => ({ start: f.start, end: f.end }));
 
   const rows: TodayRow[] = [];
   let workTotalMin = 0;
 
-  for (const task of today) {
-    const dur = task.durationMin ?? 0;
-    const anchor = task.anchorMinutes;
-    const startMin = anchor !== null ? Math.max(runningClock, anchor) : runningClock;
-    const endMin = startMin + dur;
-    const bufferMin = anchor !== null ? anchor - runningClock : null;
-
-    rows.push({ task, startMin, endMin, bufferMin });
-    workTotalMin += dur;
-    runningClock = endMin;
+  // 2. Fixed rows.
+  for (const f of fixed) {
+    workTotalMin += f.end - f.start;
+    rows.push({
+      task: f.task,
+      startMin: f.start,
+      endMin: f.end,
+      fixed: true,
+      segmentIndex: 0,
+      segmentCount: 1,
+      conflict: f.conflict,
+    });
   }
+
+  // 3. Flexible tasks fill the gaps in document order, splitting as needed.
+  let fillClock = dayStartMin;
+  for (const task of today) {
+    if (task.anchorMinutes !== null) continue;
+    const dur = task.durationMin ?? 0;
+    workTotalMin += dur;
+
+    if (dur === 0) {
+      rows.push({
+        task,
+        startMin: fillClock,
+        endMin: fillClock,
+        fixed: false,
+        segmentIndex: 0,
+        segmentCount: 1,
+        conflict: false,
+      });
+      continue;
+    }
+
+    const { segments, endClock } = fillFlexible(fillClock, dur, occupied);
+    fillClock = endClock;
+    segments.forEach((seg, i) => {
+      rows.push({
+        task,
+        startMin: seg.start,
+        endMin: seg.end,
+        fixed: false,
+        segmentIndex: i,
+        segmentCount: segments.length,
+        conflict: false,
+      });
+    });
+  }
+
+  // 4. Sort the timeline by start (stable for equal starts).
+  rows.sort((a, b) => a.startMin - b.startMin || a.endMin - b.endMin);
+
+  const clockEndMin = rows.reduce((m, r) => Math.max(m, r.endMin), dayStartMin);
 
   return {
     rows,
-    clockEndMin: runningClock,
+    clockEndMin,
     workTotalMin,
     capacityMin,
     overBudget: workTotalMin > capacityMin,
+    hasConflict,
   };
 }
 

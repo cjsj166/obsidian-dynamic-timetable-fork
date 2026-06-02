@@ -1,5 +1,6 @@
 import {
   CapacityOverride,
+  DEFAULT_DAY_START_MIN,
   DEFAULT_PARSE_OPTIONS,
   DEFAULT_WORKING_HOURS_MIN,
   Frontmatter,
@@ -51,6 +52,7 @@ export function splitFrontmatter(content: string): {
 export function parseFrontmatter(text: string | null): Frontmatter {
   const fm: Frontmatter = {
     workingHoursMin: DEFAULT_WORKING_HOURS_MIN,
+    dayStartMin: DEFAULT_DAY_START_MIN,
     capacityOverrides: [],
     error: null,
   };
@@ -70,6 +72,17 @@ export function parseFrontmatter(text: string | null): Frontmatter {
         errors.push(`working_hours: "${whMatch[1]}" is not H:MM or minutes`);
       } else {
         fm.workingHoursMin = min;
+      }
+      continue;
+    }
+
+    const dsMatch = line.match(/^day_start:\s*(\S+)/);
+    if (dsMatch) {
+      const min = parseClock(dsMatch[1]);
+      if (min === null) {
+        errors.push(`day_start: "${dsMatch[1]}" is not a valid HH:MM time`);
+      } else {
+        fm.dayStartMin = min;
       }
       continue;
     }

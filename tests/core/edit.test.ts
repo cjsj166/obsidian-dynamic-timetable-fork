@@ -1,4 +1,9 @@
-import { moveLine, dropIndex } from '../../src/core/edit';
+import {
+  moveLine,
+  dropIndex,
+  moveBlock,
+  taskBlockEnd,
+} from '../../src/core/edit';
 
 const doc = (lines: string[]) => lines.join('\n');
 
@@ -44,5 +49,58 @@ describe('dropIndex', () => {
   it('targets before/after', () => {
     expect(dropIndex(5, false)).toBe(5);
     expect(dropIndex(5, true)).toBe(6);
+  });
+});
+
+describe('taskBlockEnd', () => {
+  it('includes indented child lines', () => {
+    const lines = [
+      '- [ ] A',
+      '  note under A',
+      '  - subitem',
+      '- [ ] B',
+    ];
+    expect(taskBlockEnd(lines, 0)).toBe(3); // A + 2 children, stops at B
+    expect(taskBlockEnd(lines, 3)).toBe(4); // B alone
+  });
+
+  it('absorbs a blank line that separates deeper children', () => {
+    const lines = ['- [ ] A', '  child 1', '', '  child 2', '- [ ] B'];
+    expect(taskBlockEnd(lines, 0)).toBe(4); // through "  child 2"
+  });
+
+  it('stops at a trailing blank and at the divider', () => {
+    const lines = ['- [ ] A', '  child', '', '- [ ] B'];
+    expect(taskBlockEnd(lines, 0)).toBe(2);
+    const d = ['- [ ] A', '  child', '---', '- [ ] B'];
+    expect(taskBlockEnd(d, 0)).toBe(2);
+  });
+});
+
+describe('moveBlock', () => {
+  it('moves a task and its children together', () => {
+    const lines = [
+      '- [ ] A',
+      '  child A',
+      '- [ ] B',
+      '  child B',
+    ];
+    // move block B (index 2..4) above A (index 0).
+    expect(moveBlock(lines.join('\n'), 2, 4, 0)).toBe(
+      ['- [ ] B', '  child B', '- [ ] A', '  child A'].join('\n')
+    );
+  });
+
+  it('moves a block downward past a later block', () => {
+    const lines = ['- [ ] A', '  child A', '- [ ] B', '  child B'];
+    // move block A (0..2) to after block B (toIndex 4).
+    expect(moveBlock(lines.join('\n'), 0, 2, 4)).toBe(
+      ['- [ ] B', '  child B', '- [ ] A', '  child A'].join('\n')
+    );
+  });
+
+  it('is a no-op when dropped inside its own block', () => {
+    const lines = ['- [ ] A', '  child A', '- [ ] B'];
+    expect(moveBlock(lines.join('\n'), 0, 2, 1)).toBe(lines.join('\n'));
   });
 });

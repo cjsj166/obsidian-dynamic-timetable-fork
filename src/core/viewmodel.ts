@@ -32,21 +32,22 @@ export interface ViewModel {
 }
 
 /**
- * Parse a daily-note and project both sections.
+ * Parse a daily-note and project both sections. Everything is derived from the
+ * note (its `day_start` / `working_hours` / overrides and its title date) — the
+ * real wall-clock is never consulted, so the view is identical regardless of
+ * when it is opened.
  *
  * @param content  raw note text (including frontmatter)
  * @param noteDate `YYYY-MM-DD` the note represents (drives capacity + below queue)
- * @param nowMin   current minutes-of-day, used as the today running clock anchor
  */
 export function buildViewModel(
   content: string,
   noteDate: string,
-  nowMin: number,
   opts: ParseOptions = DEFAULT_PARSE_OPTIONS
 ): ViewModel {
   const doc = parseDocument(content, opts);
   const capacityMin = capacityFor(doc.frontmatter, noteDate);
-  const today = projectToday(doc.today, nowMin, capacityMin);
+  const today = projectToday(doc.today, doc.frontmatter.dayStartMin, capacityMin);
   const below = projectBelow(doc.below, doc.frontmatter, noteDate);
   return {
     frontmatter: doc.frontmatter,

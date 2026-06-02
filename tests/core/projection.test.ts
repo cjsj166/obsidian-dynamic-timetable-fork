@@ -8,11 +8,16 @@ import { parseFrontmatter } from '../../src/core/document';
 
 const HM = (h: number, m = 0) => h * 60 + m;
 
-describe('projectToday — fixture 1', () => {
+// Helper: index rows by [name, segmentIndex] for order-independent assertions.
+const seg = (rows: any[], name: string, idx = 0) =>
+  rows.find((r) => r.task.name === name && r.segmentIndex === idx);
+
+describe('projectToday — fixture 1 (fixed appointments + flexible fill)', () => {
   const doc = parseDocument(
     [
       '---',
       'working_hours: 8:00',
+      'day_start: 9:00',
       '---',
       '- [ ] 출근 @ 9:00',
       '- [ ] 메일 확인 ; 0:10',
@@ -23,52 +28,102 @@ describe('projectToday — fixture 1', () => {
   );
   const proj = projectToday(
     doc.today,
-    HM(9),
+    doc.frontmatter.dayStartMin,
     capacityFor(doc.frontmatter, '2026-06-01')
   );
 
-  it('cascades start/end clocks', () => {
-    expect(proj.rows.map((r) => [r.startMin, r.endMin])).toEqual([
-      [HM(9), HM(9)],
-      [HM(9), HM(9, 10)],
-      [HM(11, 45), HM(12, 45)],
-      [HM(13), HM(15)],
-      [HM(15), HM(16)],
+  it('places fixed appointments at their anchors', () => {
+    expect([seg(proj.rows, '점심시간').startMin, seg(proj.rows, '점심시간').endMin]).toEqual([
+      HM(11, 45),
+      HM(12, 45),
+    ]);
+    expect([seg(proj.rows, '할 거 1').startMin, seg(proj.rows, '할 거 1').endMin]).toEqual([
+      HM(13),
+      HM(15),
+    ]);
+    expect(seg(proj.rows, '점심시간').fixed).toBe(true);
+  });
+
+  it('fills flexible work from day_start into the early gap', () => {
+    expect([seg(proj.rows, '메일 확인').startMin, seg(proj.rows, '메일 확인').endMin]).toEqual([
+      HM(9),
+      HM(9, 10),
+    ]);
+    expect([seg(proj.rows, '할 거 2').startMin, seg(proj.rows, '할 거 2').endMin]).toEqual([
+      HM(9, 10),
+      HM(10, 10),
     ]);
   });
 
-  it('computes buffers (null when no anchor)', () => {
-    expect(proj.rows.map((r) => r.bufferMin)).toEqual([
-      0,
-      null,
-      HM(2, 35),
-      HM(0, 15),
-      null,
-    ]);
+  it('sorts rows by start time', () => {
+    const starts = proj.rows.map((r) => r.startMin);
+    expect(starts).toEqual([...starts].sort((a, b) => a - b));
   });
 
   it('summarizes the day', () => {
-    expect(proj.clockEndMin).toBe(HM(16));
+    expect(proj.clockEndMin).toBe(HM(15));
     expect(proj.workTotalMin).toBe(HM(4, 10));
     expect(proj.capacityMin).toBe(HM(8));
     expect(proj.overBudget).toBe(false);
+    expect(proj.hasConflict).toBe(false);
   });
 });
 
-describe('projectToday — fixture 2 (negative buffer)', () => {
+describe('projectToday — fixture 2 (split around a fixed appointment)', () => {
   const doc = parseDocument(
-    ['---', 'working_hours: 7:00', '---', '- [ ] 긴 작업 ; 4:00', '- [ ] 미팅 @ 11:00 ; 1:00'].join(
-      '\n'
-    )
+    [
+      '---',
+      'working_hours: 7:00',
+      'day_start: 9:00',
+      '---',
+      '- [ ] 긴 작업 ; 4:00',
+      '- [ ] 미팅 @ 11:00 ; 1:00',
+    ].join('\n')
+  );
+  const proj = projectToday(
+    doc.today,
+    doc.frontmatter.dayStartMin,
+    capacityFor(doc.frontmatter, 'x')
+  );
+
+  it('splits the flexible task before/after the appointment', () => {
+    const a1 = seg(proj.rows, '긴 작업', 0);
+    const a2 = seg(proj.rows, '긴 작업', 1);
+    expect([a1.startMin, a1.endMin]).toEqual([HM(9), HM(11)]);
+    expect([a2.startMin, a2.endMin]).toEqual([HM(12), HM(14)]);
+    expect(a1.segmentCount).toBe(2);
+    expect(a2.segmentCount).toBe(2);
+  });
+
+  it('keeps the appointment fixed at its anchor', () => {
+    const m = seg(proj.rows, '미팅');
+    expect([m.startMin, m.endMin]).toEqual([HM(11), HM(12)]);
+    expect(m.fixed).toBe(true);
+  });
+
+  it('renders the timeline in order: A(1/2), 미팅, A(2/2)', () => {
+    expect(proj.rows.map((r) => [r.task.name, r.segmentIndex])).toEqual([
+      ['긴 작업', 0],
+      ['미팅', 0],
+      ['긴 작업', 1],
+    ]);
+  });
+});
+
+describe('projectToday — overlapping fixed appointments', () => {
+  const doc = parseDocument(
+    [
+      '---',
+      '---',
+      '- [ ] A @ 10:00 ; 2:00',
+      '- [ ] B @ 11:00 ; 1:00',
+    ].join('\n')
   );
   const proj = projectToday(doc.today, HM(9), capacityFor(doc.frontmatter, 'x'));
 
-  it('projects a late start as a negative buffer', () => {
-    expect(proj.rows[0].startMin).toBe(HM(9));
-    expect(proj.rows[0].endMin).toBe(HM(13));
-    expect(proj.rows[1].startMin).toBe(HM(13));
-    expect(proj.rows[1].endMin).toBe(HM(14));
-    expect(proj.rows[1].bufferMin).toBe(-HM(2));
+  it('flags the conflict', () => {
+    expect(proj.hasConflict).toBe(true);
+    expect(proj.rows.every((r) => r.conflict)).toBe(true);
   });
 });
 

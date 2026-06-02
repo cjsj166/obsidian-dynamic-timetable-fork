@@ -17,7 +17,12 @@ import { buildViewModel, ViewModel, allTaskLines } from './core/viewmodel';
 import { ParseOptions, TaskLine } from './core/types';
 import { formatClock, formatDuration } from './core/time';
 import { formatShort, todayISO } from './core/date';
-import { appendDivider, dropIndex, moveLine } from './core/edit';
+import {
+  appendDivider,
+  dropIndex,
+  moveBlock,
+  taskBlockEnd,
+} from './core/edit';
 
 export type TimetableViewComponentRef = {
   update: () => Promise<void>;
@@ -64,16 +69,8 @@ const TimetableViewComponent = forwardRef<
   // resulting `modify` callbacks don't clobber our optimistic state.
   const pendingSelfWritesRef = useRef(0);
 
-  const buildFrom = (content: string): ViewModel => {
-    const now = new Date();
-    const nowMin = now.getHours() * 60 + now.getMinutes();
-    return buildViewModel(
-      content,
-      noteDateFor(plugin),
-      nowMin,
-      parseOptionsFor(plugin)
-    );
-  };
+  const buildFrom = (content: string): ViewModel =>
+    buildViewModel(content, noteDateFor(plugin), parseOptionsFor(plugin));
 
   const update = async () => {
     // Swallow the re-read triggered by our own write — local state is already
@@ -112,7 +109,11 @@ const TimetableViewComponent = forwardRef<
     }, WRITE_DEBOUNCE_MS);
   };
 
-  /** Move the dragged line to an absolute insert index, optimistically. */
+  /**
+   * Move the dragged task's block (the task line + its indented children) to an
+   * absolute insert index, optimistically. Aborts on a stale (externally
+   * edited) source line.
+   */
   const applyMove = (fromLineNo: number, toIndex: number, draggedRaw: string) => {
     const base = workingContentRef.current;
     if (base == null) return;
@@ -122,11 +123,22 @@ const TimetableViewComponent = forwardRef<
       update();
       return;
     }
-    const next = moveLine(base, fromLineNo, toIndex);
+    const blockEnd = taskBlockEnd(lines, fromLineNo);
+    const next = moveBlock(base, fromLineNo, blockEnd, toIndex);
     if (next === base) return;
     workingContentRef.current = next;
     setVm(buildFrom(next));
     scheduleFlush();
+  };
+
+  /** Absolute insert index for dropping next to a target task's block. */
+  const targetDropIndex = (targetLineNo: number, after: boolean): number => {
+    const base = workingContentRef.current;
+    if (!after || base == null) {
+      return dropIndex(targetLineNo, false);
+    }
+    // "After" means after the target's whole block, so it becomes a sibling.
+    return taskBlockEnd(base.split('\n'), targetLineNo);
   };
 
   const endDrag = () => {
@@ -153,7 +165,7 @@ const TimetableViewComponent = forwardRef<
     if (from == null || raw == null) return endDrag();
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const after = e.clientY > rect.top + rect.height / 2;
-    applyMove(from, dropIndex(targetLineNo, after), raw);
+    applyMove(from, targetDropIndex(targetLineNo, after), raw);
     endDrag();
   };
 
@@ -180,11 +192,13 @@ const TimetableViewComponent = forwardRef<
         return endDrag();
       }
       const withDivider = appendDivider(base);
-      workingContentRef.current = withDivider;
-      const next = moveLine(
+      const dividerLines = withDivider.split('\n');
+      const blockEnd = taskBlockEnd(dividerLines, from);
+      const next = moveBlock(
         withDivider,
         from,
-        withDivider.split('\n').length
+        blockEnd,
+        dividerLines.length
       );
       workingContentRef.current = next;
       setVm(buildFrom(next));
@@ -325,34 +339,40 @@ const TimetableViewComponent = forwardRef<
             <table className="dt-table">
               <tbody>
                 {vm.today.rows.map((row, i) => (
-                  <React.Fragment key={`today-${i}`}>
-                    {row.bufferMin !== null && row.bufferMin < 0 && (
-                      <tr className="dt-buffer-row">
-                        <td colSpan={3} className="late">
-                          late {formatDuration(row.bufferMin)}
-                        </td>
-                      </tr>
-                    )}
-                    <tr
-                      className={rowClass(row.task)}
-                      title={row.task.parseError ?? undefined}
-                      draggable
-                      onDragStart={(e) =>
-                        onRowDragStart(e, row.task.lineNo, row.task.raw)
-                      }
-                      onDragOver={allowDrop}
-                      onDrop={(e) => onRowDrop(e, row.task.lineNo)}
-                      style={{ backgroundColor: rowBackground(row.task) }}>
-                      <td className="dt-clock">{formatClock(row.startMin)}</td>
-                      <td className="dt-name">
-                        {taskLabel(row.task)}
-                        {row.task.parseError && (
-                          <span className="dt-error-mark"> ⚠</span>
-                        )}
-                      </td>
-                      <td className="dt-clock">{formatClock(row.endMin)}</td>
-                    </tr>
-                  </React.Fragment>
+                  <tr
+                    key={`today-${i}`}
+                    className={
+                      rowClass(row.task) + (row.conflict ? ' dt-conflict' : '')
+                    }
+                    title={
+                      row.conflict
+                        ? '시각이 다른 고정 일정과 겹칩니다'
+                        : row.task.parseError ?? undefined
+                    }
+                    draggable
+                    onDragStart={(e) =>
+                      onRowDragStart(e, row.task.lineNo, row.task.raw)
+                    }
+                    onDragOver={allowDrop}
+                    onDrop={(e) => onRowDrop(e, row.task.lineNo)}
+                    style={{ backgroundColor: rowBackground(row.task) }}>
+                    <td className="dt-clock">{formatClock(row.startMin)}</td>
+                    <td className="dt-name">
+                      {row.fixed && <span className="dt-pin">📌 </span>}
+                      {taskLabel(row.task)}
+                      {row.segmentCount > 1 && (
+                        <span className="dt-segment">
+                          {' '}
+                          ({row.segmentIndex + 1}/{row.segmentCount})
+                        </span>
+                      )}
+                      {row.task.parseError && (
+                        <span className="dt-error-mark"> ⚠</span>
+                      )}
+                      {row.conflict && <span className="dt-error-mark"> ⚠</span>}
+                    </td>
+                    <td className="dt-clock">{formatClock(row.endMin)}</td>
+                  </tr>
                 ))}
                 {vm.today.rows.length === 0 && (
                   <tr>

@@ -16,7 +16,7 @@ describe('buildViewModel', () => {
     '- [ ] 거래처 미팅 @ 2026-06-03 14:00 ; 2:00',
   ].join('\n');
 
-  const vm = buildViewModel(content, '2026-06-01', HM(9));
+  const vm = buildViewModel(content, '2026-06-01');
 
   it('splits today / below at the divider', () => {
     expect(vm.hasDivider).toBe(true);
@@ -58,7 +58,7 @@ describe('buildViewModel', () => {
 });
 
 describe('buildViewModel — no divider', () => {
-  const vm = buildViewModel('- [ ] only today ; 1:00', '2026-06-01', HM(9));
+  const vm = buildViewModel('- [ ] only today ; 1:00', '2026-06-01');
   it('treats the whole body as today', () => {
     expect(vm.hasDivider).toBe(false);
     expect(vm.today.rows).toHaveLength(1);

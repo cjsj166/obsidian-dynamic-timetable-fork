@@ -109,6 +109,17 @@ describe('parseFrontmatter', () => {
     expect(fm.error).toMatch(/capacity_overrides/);
     expect(fm.capacityOverrides).toHaveLength(0);
   });
+
+  it('defaults day_start to 9:00 and parses an override', () => {
+    expect(parseFrontmatter(null).dayStartMin).toBe(9 * 60);
+    expect(parseFrontmatter('day_start: 8:30').dayStartMin).toBe(8 * 60 + 30);
+  });
+
+  it('flags an invalid day_start', () => {
+    const fm = parseFrontmatter('day_start: 25:00');
+    expect(fm.error).toMatch(/day_start/);
+    expect(fm.dayStartMin).toBe(9 * 60);
+  });
 });
 
 describe('splitFrontmatter', () => {

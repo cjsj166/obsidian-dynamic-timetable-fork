@@ -33,6 +33,8 @@ export interface CapacityOverride {
 export interface Frontmatter {
   /** Available working time for a normal day, in minutes. Default 420 (7:00). */
   workingHoursMin: number;
+  /** Minutes-of-day the today schedule starts from. Default 540 (9:00). */
+  dayStartMin: number;
   capacityOverrides: CapacityOverride[];
   /** Non-null when frontmatter could not be parsed cleanly. */
   error: string | null;
@@ -62,3 +64,6 @@ export const DEFAULT_PARSE_OPTIONS: ParseOptions = {
 
 /** Default working hours when frontmatter omits `working_hours`: 7:00. */
 export const DEFAULT_WORKING_HOURS_MIN = 7 * 60;
+
+/** Default day start when frontmatter omits `day_start`: 9:00. */
+export const DEFAULT_DAY_START_MIN = 9 * 60;

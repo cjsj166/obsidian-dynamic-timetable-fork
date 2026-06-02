@@ -99,6 +99,15 @@
   text-decoration: line-through;
 }
 
+.dt-segment {
+  color: var(--text-muted);
+  font-size: 0.85em;
+}
+
+.dt-conflict {
+  background-color: var(--background-modifier-error) !important;
+}
+
 .dt-parse-error {
   color: var(--text-muted);
   opacity: 0.65;

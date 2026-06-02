@@ -36,6 +36,72 @@ export function moveLine(
   return lines.join('\n');
 }
 
+/** Width of the leading indentation (spaces/tabs) of a line. */
+function leadingWidth(line: string): number {
+  const m = line.match(/^[ \t]*/);
+  return m ? m[0].length : 0;
+}
+
+/**
+ * Exclusive end index of the "block" owned by the task line at `startIndex`:
+ * the task line itself plus the following lines that are more indented than it
+ * (its children / notes). Blank lines are absorbed only when a still-deeper
+ * line follows them; the `---` divider and same/shallower lines end the block.
+ */
+export function taskBlockEnd(lines: string[], startIndex: number): number {
+  if (startIndex < 0 || startIndex >= lines.length) return startIndex + 1;
+  const indent = leadingWidth(lines[startIndex]);
+  let end = startIndex + 1;
+  let i = startIndex + 1;
+  while (i < lines.length) {
+    if (lines[i].trim() === '') {
+      let k = i + 1;
+      while (k < lines.length && lines[k].trim() === '') k++;
+      if (k < lines.length && leadingWidth(lines[k]) > indent) {
+        i = k + 1;
+        end = i;
+        continue;
+      }
+      break;
+    }
+    if (leadingWidth(lines[i]) > indent) {
+      i++;
+      end = i;
+      continue;
+    }
+    break;
+  }
+  return end;
+}
+
+/**
+ * Move the block `[startIndex, endIndex)` so it sits at `toIndex` in the
+ * resulting document (interpreted against the original numbering). The shift
+ * from removing the block is handled internally. No-op when `toIndex` lands
+ * inside the block being moved.
+ */
+export function moveBlock(
+  content: string,
+  startIndex: number,
+  endIndex: number,
+  toIndex: number
+): string {
+  const lines = content.split('\n');
+  if (startIndex < 0 || startIndex >= lines.length || endIndex <= startIndex) {
+    return content;
+  }
+  if (toIndex >= startIndex && toIndex <= endIndex) {
+    return content; // dropping within the moved block
+  }
+  const block = lines.slice(startIndex, endIndex);
+  const rest = [...lines.slice(0, startIndex), ...lines.slice(endIndex)];
+  const dest =
+    toIndex > endIndex ? toIndex - block.length : Math.min(toIndex, startIndex);
+  const clamped = Math.max(0, Math.min(rest.length, dest));
+  rest.splice(clamped, 0, ...block);
+  return rest.join('\n');
+}
+
 /**
  * Compute the absolute insertion index for dropping next to a target line.
  * `after` true → insert just below the target; false → just above it.
