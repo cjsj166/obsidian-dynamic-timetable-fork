@@ -23,6 +23,8 @@ export interface ViewModel {
   below: BelowProjection;
   /** True when the body had a `---` divider separating today / below. */
   hasDivider: boolean;
+  /** Absolute line index of the `---` divider, or null when there is none. */
+  dividerLineNo: number | null;
   /** The date the note represents (`YYYY-MM-DD`). */
   noteDate: string;
   /** Capacity (minutes) for `noteDate`: working_hours + that day's override. */
@@ -51,6 +53,7 @@ export function buildViewModel(
     today,
     below,
     hasDivider: doc.hasDivider,
+    dividerLineNo: doc.dividerLineNo,
     noteDate,
     capacityMin,
   };

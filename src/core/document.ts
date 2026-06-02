@@ -246,5 +246,11 @@ export function parseDocument(
     }
   }
 
-  return { frontmatter, today, below, hasDivider };
+  return {
+    frontmatter,
+    today,
+    below,
+    hasDivider,
+    dividerLineNo: hasDivider ? bodyOffset + dividerIndex : null,
+  };
 }

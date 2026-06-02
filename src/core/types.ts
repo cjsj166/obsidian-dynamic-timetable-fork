@@ -44,6 +44,8 @@ export interface ParsedDocument {
   below: TaskLine[];
   /** True when the body contained a `---` divider separating today / below. */
   hasDivider: boolean;
+  /** Absolute line index of the `---` divider, or null when there is none. */
+  dividerLineNo: number | null;
 }
 
 export interface ParseOptions {
