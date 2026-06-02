@@ -107,6 +107,28 @@ Tasks Chute v0.1.0를 향한 단계. 각 단계는 **이전 단계가 동작해�
   - `tests/core/projection.test.ts`: SPEC fixture 1~4 + over-booked 검증. 전체 29 테스트 통과.
   - 여전히 뷰 미연결 → Phase 5에서 연결.
 
+- **Phase 5 — today/below 뷰 렌더링** (2026-06-02):
+  - `src/core/viewmodel.ts`: 순수 `buildViewModel(content, noteDate, nowMin, opts)` = parseDocument + projectToday(capacityFor(noteDate)) + projectBelow. `allTaskLines` 헬퍼.
+  - `TimetableViewComponent.tsx` 재작성: 대상 파일 `cachedRead` → 파일명(`YYYY-MM-DD`)에서 noteDate 도출 → TODAY(시작/이름/끝 시각, work/capacity/끝시각 요약, 음수 buffer "late" 행) + BELOW(📌 pin, `→ Mon 6/2 (H:MM in)` 투영, over-booked 경고) 섹션 렌더.
+  - 제거: 진행률 바·남은시간 인터벌·음수버퍼 Notice·평면 테이블. 유지: 카테고리 배경색(코어 TaskLine.categories 기반), 새로고침 버튼.
+  - `styles.css` 섹션 레이아웃으로 재작성(Obsidian 테마 변수 사용). `tests/core/viewmodel.test.ts` 6개. 전체 35 통과.
+
+- **Phase 6 — 드래그 앤 드롭 재정렬** (2026-06-02):
+  - `src/core/edit.ts`(순수): `moveLine`/`dropIndex`/`appendDivider` — 절대 lineNo 기준 콘텐츠 보존 라인 이동. divider 가로지르기·빈 섹션 드롭(없으면 `---` 생성) 지원. `parseDocument`가 `dividerLineNo` 노출.
+  - 뷰: 양 섹션 행 draggable, 낙관적 렌더 후 파일 쓰기 200ms 디바운스(`WRITE_DEBOUNCE_MS`). self-write 카운터로 자기 modify 무시, 외부 편집은 대기 쓰기 취소 + raw 라인 가드로 stale 이동 차단.
+  - `tests/core/edit.test.ts`. 전체 42 통과.
+
+- **Phase 7 — 자정 롤오버** (2026-06-02):
+  - `src/core/rollover.ts`(순수): `collectIncompleteToday`, `insertIntoBelowTop`(divider 없으면 생성), `rolloverInto`, `shouldRollover`(last_rollover < today 멱등 가드).
+  - `src/DailyNotes.ts`: 코어 Daily Notes 플러그인(folder/format/template) 래퍼 — Obsidian 재노출 moment 사용, 외부 의존성 없음. 날짜→파일 해석·생성(템플릿 시드).
+  - `src/Rollover.ts`: 어제 읽기 → 오늘 생성/로드 → carried 블록 쓰기 → `settings.lastRollover` 기록. 어제 노트는 불변(이력 보존).
+  - `main.ts`: `lastRollover` 설정, "Roll over" 명령, layout-ready 시 자동 실행. `tests/core/rollover.test.ts`(Fixture 5 + 멱등성). 전체 50 통과.
+
+- **Phase 8 — 파싱 에러 시각화 + 마무리** (2026-06-02):
+  - `parseTaskLine`이 무효 토큰 감지: `;` 뒤 비-H:MM/비-정수("1.5"), digit-led 범위초과 `@` 시각("25:00") → `parseError` 설정 + 해당 값 무효화(durationMin/anchorMinutes=null). 비-시각 `@`(foo@bar.com)는 이름에 보존.
+  - 뷰: 에러 행 회색 + ⚠ 마커 + 에러 텍스트 툴팁(`dt-parse-error`/`dt-error-mark`). frontmatter 배너·over-budget 강조·음수 buffer 행은 Phase 5에서 이미 적용됨.
+  - `tests/core/document.test.ts`에 에러 감지 + 비회귀 케이스. 전체 54 통과.
+
 ## Decisions Log
 
 | Date | Decision | Reason |
