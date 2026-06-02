@@ -176,4 +176,15 @@ describe('parseDocument', () => {
     );
     expect(doc.today.map((t) => t.name)).toEqual(['a', 'b']);
   });
+
+  it('warns when frontmatter keys appear without the opening --- fence', () => {
+    const doc = parseDocument(
+      ['working_hours: 7:00', 'day_start: 9:00', '---', '- [ ] a ; 30'].join(
+        '\n'
+      )
+    );
+    expect(doc.frontmatter.error).toMatch(/펜스/);
+    // and the keys were NOT applied (defaults remain)
+    expect(doc.frontmatter.workingHoursMin).toBe(7 * 60);
+  });
 });

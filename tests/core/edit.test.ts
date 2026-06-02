@@ -64,12 +64,16 @@ describe('taskBlockEnd', () => {
     expect(taskBlockEnd(lines, 3)).toBe(4); // B alone
   });
 
-  it('absorbs a blank line that separates deeper children', () => {
-    const lines = ['- [ ] A', '  child 1', '', '  child 2', '- [ ] B'];
-    expect(taskBlockEnd(lines, 0)).toBe(4); // through "  child 2"
+  it('includes an un-indented note written directly under a task', () => {
+    const lines = [
+      '- [ ] 팀 미팅 @ 13:00 ; 1:00',
+      '팀 미팅할 때 말할 내용',
+      '- [ ] 코드 리뷰 ; 2:00',
+    ];
+    expect(taskBlockEnd(lines, 0)).toBe(2); // task + its note, stops at next task
   });
 
-  it('stops at a trailing blank and at the divider', () => {
+  it('ends the block at a blank line and at the divider', () => {
     const lines = ['- [ ] A', '  child', '', '- [ ] B'];
     expect(taskBlockEnd(lines, 0)).toBe(2);
     const d = ['- [ ] A', '  child', '---', '- [ ] B'];

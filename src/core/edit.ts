@@ -1,6 +1,8 @@
 // Pure, content-preserving document edits keyed by absolute line index.
 // Everything else in the note (prose, blank lines, headings, the divider) is
-// left untouched — only the dragged line moves.
+// left untouched — only the dragged block moves.
+
+import { isTaskLine } from './document';
 
 /**
  * Move the line at `fromIndex` so it sits at `toIndex` in the resulting
@@ -44,34 +46,25 @@ function leadingWidth(line: string): number {
 
 /**
  * Exclusive end index of the "block" owned by the task line at `startIndex`:
- * the task line itself plus the following lines that are more indented than it
- * (its children / notes). Blank lines are absorbed only when a still-deeper
- * line follows them; the `---` divider and same/shallower lines end the block.
+ * the task line plus the following lines that belong to it — its notes and
+ * deeper sub-tasks. The block ends at the first blank line, the `---` divider,
+ * or the next task line at the same-or-shallower indent (a sibling/parent).
+ *
+ * This deliberately does NOT require child notes to be indented: a plain note
+ * written directly under a task (even at column 0) still travels with it.
  */
 export function taskBlockEnd(lines: string[], startIndex: number): number {
   if (startIndex < 0 || startIndex >= lines.length) return startIndex + 1;
   const indent = leadingWidth(lines[startIndex]);
-  let end = startIndex + 1;
   let i = startIndex + 1;
   while (i < lines.length) {
-    if (lines[i].trim() === '') {
-      let k = i + 1;
-      while (k < lines.length && lines[k].trim() === '') k++;
-      if (k < lines.length && leadingWidth(lines[k]) > indent) {
-        i = k + 1;
-        end = i;
-        continue;
-      }
-      break;
-    }
-    if (leadingWidth(lines[i]) > indent) {
-      i++;
-      end = i;
-      continue;
-    }
-    break;
+    const line = lines[i];
+    if (line.trim() === '') break; // blank line ends the block
+    if (line.trim() === '---') break; // divider
+    if (isTaskLine(line) && leadingWidth(line) <= indent) break; // sibling task
+    i++;
   }
-  return end;
+  return i;
 }
 
 /**

@@ -257,6 +257,18 @@ export function parseDocument(
   const { frontmatterText, bodyLines, bodyOffset } = splitFrontmatter(content);
   const frontmatter = parseFrontmatter(frontmatterText);
 
+  // Catch the common mistake of frontmatter keys without the opening `---`
+  // fence: they'd otherwise be silently read as body text (defaults applied).
+  if (frontmatterText === null) {
+    const looksLikeFrontmatter = bodyLines
+      .slice(0, 8)
+      .some((l) => /^\s*(working_hours|day_start|capacity_overrides)\s*:/.test(l));
+    if (looksLikeFrontmatter) {
+      frontmatter.error =
+        'frontmatter "---" 펜스가 없습니다 — 설정이 무시되고 기본값이 적용됩니다';
+    }
+  }
+
   let dividerIndex = -1;
   for (let i = 0; i < bodyLines.length; i++) {
     if (bodyLines[i].trim() === '---') {
