@@ -146,7 +146,11 @@ export function parseTaskLine(
     `${st}\\s*(\\d{4}-\\d{2}-\\d{2})[ T](\\d{1,2}:?\\d{2})`
   );
   const timeRe = new RegExp(`${st}\\s*(\\d{1,2}:?\\d{2})`);
-  const durRe = new RegExp(`${sep}\\s*(\\d+:\\d{2}|\\d+)`);
+  // The full token immediately after each delimiter, for validation/stripping.
+  const durTokenRe = new RegExp(`${sep}\\s*(\\S+)`);
+  const stTokenRe = new RegExp(`${st}\\s*(\\S+)`);
+
+  const errors: string[] = [];
 
   let anchorDate: string | null = null;
   let anchorMinutes: number | null = null;
@@ -161,8 +165,30 @@ export function parseTaskLine(
     }
   }
 
-  const durMatch = body.match(durRe);
-  const durationMin = durMatch ? parseDuration(durMatch[1]) : null;
+  // An `@` followed by a digit-led token that didn't parse is malformed.
+  const stTok = body.match(stTokenRe);
+  if (
+    stTok &&
+    anchorMinutes === null &&
+    anchorDate === null &&
+    /^\d/.test(stTok[1])
+  ) {
+    errors.push(`invalid time "${stTok[1]}" after ${opts.startTimeDelimiter}`);
+  }
+
+  // Duration: the token after `;` must be H:MM or an integer minute count.
+  let durationMin: number | null = null;
+  const durTok = body.match(durTokenRe);
+  if (durTok) {
+    const parsed = parseDuration(durTok[1]);
+    if (parsed === null) {
+      errors.push(
+        `invalid duration "${durTok[1]}" (use H:MM or minutes)`
+      );
+    } else {
+      durationMin = parsed;
+    }
+  }
 
   const categories: string[] = [];
   let tagMatch: RegExpExecArray | null;
@@ -175,11 +201,11 @@ export function parseTaskLine(
   let name = body;
   if (dtMatch) {
     name = name.replace(dtMatch[0], '');
-  } else {
-    name = name.replace(timeRe, '');
+  } else if (stTok && /^\d/.test(stTok[1])) {
+    name = name.replace(stTok[0], '');
   }
-  if (durMatch) {
-    name = name.replace(durMatch[0], '');
+  if (durTok) {
+    name = name.replace(durTok[0], '');
   }
   name = name
     .replace(TAG_RE, '')
@@ -196,7 +222,7 @@ export function parseTaskLine(
     anchorDate,
     durationMin,
     categories,
-    parseError: null,
+    parseError: errors.length > 0 ? errors.join('; ') : null,
   };
 }
 

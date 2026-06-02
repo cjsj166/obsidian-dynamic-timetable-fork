@@ -99,6 +99,16 @@
   text-decoration: line-through;
 }
 
+.dt-parse-error {
+  color: var(--text-muted);
+  opacity: 0.65;
+  cursor: help;
+}
+
+.dt-error-mark {
+  color: var(--text-error);
+}
+
 /* Buffer / status --------------------------------------------------------- */
 
 .dt-buffer-row td {

@@ -51,6 +51,31 @@ describe('parseTaskLine', () => {
     expect(parseTaskLine('just a note', 0)).toBeNull();
     expect(parseTaskLine('# heading', 0)).toBeNull();
   });
+
+  it('flags a decimal duration as a parse error', () => {
+    const t = parseTaskLine('- [ ] 할 거 ; 1.5', 0)!;
+    expect(t.parseError).toMatch(/invalid duration "1\.5"/);
+    expect(t.durationMin).toBeNull();
+  });
+
+  it('flags an out-of-range @ time as a parse error', () => {
+    const t = parseTaskLine('- [ ] thing @ 25:00', 0)!;
+    expect(t.parseError).toMatch(/invalid time "25:00"/);
+    expect(t.anchorMinutes).toBeNull();
+  });
+
+  it('leaves a literal @ in the name when it is not a time', () => {
+    const t = parseTaskLine('- [ ] mail foo@bar.com ; 30', 0)!;
+    expect(t.parseError).toBeNull();
+    expect(t.name).toBe('mail foo@bar.com');
+    expect(t.durationMin).toBe(30);
+  });
+
+  it('accepts both H:MM and integer minutes without error', () => {
+    expect(parseTaskLine('- [ ] a ; 1:30', 0)!.parseError).toBeNull();
+    expect(parseTaskLine('- [ ] a ; 1:30', 0)!.durationMin).toBe(90);
+    expect(parseTaskLine('- [ ] a ; 90', 0)!.parseError).toBeNull();
+  });
 });
 
 describe('parseFrontmatter', () => {

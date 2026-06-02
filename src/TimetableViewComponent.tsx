@@ -270,6 +270,11 @@ const TimetableViewComponent = forwardRef<
     scrollToFirstUncompletedTask: () => {},
   }));
 
+  const rowClass = (task: TaskLine): string =>
+    'dt-task-row' +
+    (task.status === 'done' ? ' dt-completed' : '') +
+    (task.parseError ? ' dt-parse-error' : '');
+
   const rowBackground = (task: TaskLine): string | undefined => {
     if (!plugin.settings.applyBackgroundColorByCategory) return undefined;
     const category = task.categories[0];
@@ -329,10 +334,8 @@ const TimetableViewComponent = forwardRef<
                       </tr>
                     )}
                     <tr
-                      className={
-                        'dt-task-row' +
-                        (row.task.status === 'done' ? ' dt-completed' : '')
-                      }
+                      className={rowClass(row.task)}
+                      title={row.task.parseError ?? undefined}
                       draggable
                       onDragStart={(e) =>
                         onRowDragStart(e, row.task.lineNo, row.task.raw)
@@ -341,7 +344,12 @@ const TimetableViewComponent = forwardRef<
                       onDrop={(e) => onRowDrop(e, row.task.lineNo)}
                       style={{ backgroundColor: rowBackground(row.task) }}>
                       <td className="dt-clock">{formatClock(row.startMin)}</td>
-                      <td className="dt-name">{taskLabel(row.task)}</td>
+                      <td className="dt-name">
+                        {taskLabel(row.task)}
+                        {row.task.parseError && (
+                          <span className="dt-error-mark"> ⚠</span>
+                        )}
+                      </td>
                       <td className="dt-clock">{formatClock(row.endMin)}</td>
                     </tr>
                   </React.Fragment>
@@ -374,10 +382,8 @@ const TimetableViewComponent = forwardRef<
                 {vm.below.rows.map((row, i) => (
                   <tr
                     key={`below-${i}`}
-                    className={
-                      'dt-task-row' +
-                      (row.task.status === 'done' ? ' dt-completed' : '')
-                    }
+                    className={rowClass(row.task)}
+                    title={row.task.parseError ?? undefined}
                     draggable
                     onDragStart={(e) =>
                       onRowDragStart(e, row.task.lineNo, row.task.raw)
@@ -388,6 +394,9 @@ const TimetableViewComponent = forwardRef<
                     <td className="dt-name">
                       {row.pinned && <span className="dt-pin">📌 </span>}
                       {taskLabel(row.task)}
+                      {row.task.parseError && (
+                        <span className="dt-error-mark"> ⚠</span>
+                      )}
                     </td>
                     <td className="dt-projection">
                       {row.endDate ? (
