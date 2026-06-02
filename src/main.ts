@@ -1,4 +1,5 @@
 import { Plugin, WorkspaceLeaf, TFile, Notice } from 'obsidian';
+import { runRollover } from './Rollover';
 import { TimetableView } from './TimetableView';
 import { DynamicTimetableSettingTab } from './Settings';
 import { taskFunctions } from './TaskManager';
@@ -28,6 +29,8 @@ export interface DynamicTimetableSettings {
   categoryTransparency: number;
   showRemainingTime: boolean;
   showUntilRegex: string;
+  /** ISO date of the last day rollover ran, for per-day idempotency. */
+  lastRollover: string | null;
   [key: string]:
     | string
     | boolean
@@ -71,6 +74,7 @@ export default class DynamicTimetable extends Plugin {
     categoryTransparency: 0.3,
     showRemainingTime: true,
     showUntilRegex: '',
+    lastRollover: null,
   };
 
   async onload() {
@@ -91,10 +95,16 @@ export default class DynamicTimetable extends Plugin {
   }
 
   async layoutReadyHandler() {
-    if (this.app.workspace.layoutReady) {
+    const onReady = async () => {
+      await runRollover(this).catch((e) =>
+        console.error('DynamicTimetable: rollover failed', e)
+      );
       this.initTimetableView();
+    };
+    if (this.app.workspace.layoutReady) {
+      onReady();
     } else {
-      this.app.workspace.onLayoutReady(this.initTimetableView.bind(this));
+      this.app.workspace.onLayoutReady(onReady);
     }
     this.timetableViewComponentRef =
       React.createRef<TimetableViewComponentRef>();
@@ -118,6 +128,12 @@ export default class DynamicTimetable extends Plugin {
       id: 'init-timetable-view',
       name: 'Initialize Timetable View',
       callback: () => this.commandsManager.initializeTimetableView(),
+    });
+
+    this.addCommand({
+      id: 'roll-over',
+      name: 'Roll over incomplete tasks to today',
+      callback: () => runRollover(this, true),
     });
   }
 
