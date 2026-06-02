@@ -1,54 +1,15 @@
-.dt-task-row {
-  vertical-align: center;
-}
-
-.late {
-  color: rgba(200, 50, 50, 1);
-}
-
-.on-time {
-  color: rgba(50, 150, 50, 1);
-}
-
-.dt-completed {
-  color: rgba(0, 0, 0, 0.3);
-}
-
-.dt-buffer-time {
-  color: rgba(128, 128, 128, 1);
-}
-
-.dt-progress-bar {
-  height: 10px;
-  width: 0;
-  background-color: #4caf50;
-}
-
-.dt-progress-bar-overdue {
-  background-color: #e55a16;
-}
-
-.dt-progress-bar-container {
-  position: sticky;
-  top: 0;
-  background-color: #ffffff;
-}
-
-.dt-table {
-  padding: 10px;
-  margin: auto;
-  -webkit-border-horizontal-spacing: 0px;
-}
-
 .dt-content {
   display: block;
   overflow: auto;
+  padding: 0 8px;
 }
 
 .dt-button-container {
   display: flex;
   position: sticky;
-  top: 10px;
+  top: 0;
+  z-index: 1;
+  background-color: var(--background-primary);
 }
 
 .dt-button-container button {
@@ -58,4 +19,117 @@
 .dt-button {
   border-radius: 0;
   cursor: pointer;
+}
+
+/* Sections ---------------------------------------------------------------- */
+
+.dt-section {
+  margin: 12px 0;
+}
+
+.dt-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  border-bottom: 1px solid var(--background-modifier-border);
+  margin-bottom: 4px;
+}
+
+.dt-section-title {
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  font-size: 0.8em;
+  color: var(--text-muted);
+}
+
+.dt-section-summary {
+  font-size: 0.8em;
+  color: var(--text-muted);
+}
+
+.dt-over-budget {
+  color: var(--text-error);
+  font-weight: 600;
+}
+
+/* Tables ------------------------------------------------------------------ */
+
+.dt-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.dt-task-row td {
+  padding: 2px 4px;
+  vertical-align: baseline;
+}
+
+.dt-clock {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  white-space: nowrap;
+  width: 3.5em;
+}
+
+.dt-name {
+  width: 100%;
+}
+
+.dt-projection {
+  white-space: nowrap;
+  color: var(--text-muted);
+  font-size: 0.85em;
+  text-align: right;
+}
+
+.dt-into-day {
+  opacity: 0.7;
+}
+
+.dt-pin {
+  opacity: 0.8;
+}
+
+.dt-unscheduled {
+  color: var(--text-error);
+}
+
+.dt-completed {
+  color: var(--text-faint);
+  text-decoration: line-through;
+}
+
+/* Buffer / status --------------------------------------------------------- */
+
+.dt-buffer-row td {
+  padding: 0 4px;
+  font-size: 0.8em;
+}
+
+.late {
+  color: var(--text-error);
+}
+
+.on-time {
+  color: var(--text-success);
+}
+
+/* Banners ----------------------------------------------------------------- */
+
+.dt-banner {
+  padding: 6px 8px;
+  border-radius: 4px;
+  font-size: 0.85em;
+  margin: 8px 0;
+}
+
+.dt-banner-error {
+  background-color: var(--background-modifier-error);
+  color: var(--text-on-accent);
+}
+
+.dt-empty {
+  color: var(--text-muted);
+  font-style: italic;
+  padding: 4px;
 }

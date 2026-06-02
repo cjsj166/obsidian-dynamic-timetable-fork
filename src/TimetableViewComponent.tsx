@@ -6,23 +6,38 @@ import React, {
   useImperativeHandle,
 } from 'react';
 import DynamicTimetable from './main';
-import { Task, taskFunctions } from './TaskManager';
 import { ButtonContainer } from './Button';
-import ProgressBar from './ProgressBar';
 import { CommandsManager } from './Commands';
-import BufferTimeRow from './BufferTimeRow';
-import TaskRow from './TaskRow';
-import { Notice } from 'obsidian';
 import {
   convertHexToHSLA,
   getHSLAColorForCategory,
   getRandomHSLAColor,
 } from './ColorUtils.ts';
+import { buildViewModel, ViewModel, allTaskLines } from './core/viewmodel';
+import { ParseOptions, TaskLine } from './core/types';
+import { formatClock, formatDuration } from './core/time';
+import { formatShort, todayISO } from './core/date';
 
 export type TimetableViewComponentRef = {
   update: () => Promise<void>;
   scrollToFirstUncompletedTask: () => void;
 };
+
+const ISO_FILENAME_RE = /(\d{4}-\d{2}-\d{2})/;
+
+/** Resolve the date a note represents from its filename, else fall back to today. */
+function noteDateFor(plugin: DynamicTimetable): string {
+  const base = plugin.targetFile?.basename ?? '';
+  const m = base.match(ISO_FILENAME_RE);
+  return m ? m[1] : todayISO();
+}
+
+function parseOptionsFor(plugin: DynamicTimetable): ParseOptions {
+  return {
+    estimateDelimiter: plugin.settings.taskEstimateDelimiter,
+    startTimeDelimiter: plugin.settings.startTimeDelimiter,
+  };
+}
 
 const TimetableViewComponent = forwardRef<
   TimetableViewComponentRef,
@@ -32,56 +47,30 @@ const TimetableViewComponent = forwardRef<
   }
 >(({ plugin, commandsManager }, ref) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const firstUncompletedTaskRef = useRef<HTMLTableRowElement | null>(null);
-  const noticeRef = useRef<Notice | null>(null);
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [progressDuration, setProgressDuration] = useState(0);
-  const [progressEstimate, setProgressEstimate] = useState(0);
-  const taskManager = taskFunctions(plugin);
-  const firstUncompletedTask = tasks.find((task) => !task.isCompleted);
-  const allTasksCompleted = tasks.every((task) => task.isCompleted);
-
-  const calculateBufferTime = (
-    currentTaskEndTime: Date | null,
-    taskStartTime: Date | null,
-    index: number
-  ): number | null => {
-    if (index === 0) return 0;
-    if (currentTaskEndTime && taskStartTime) {
-      return Math.ceil(
-        (taskStartTime.getTime() - currentTaskEndTime.getTime()) / (60 * 1000)
-      );
-    }
-    return null;
-  };
-
+  const [vm, setVm] = useState<ViewModel | null>(null);
   const [categoryBackgroundColors, setCategoryBackgroundColors] = useState<
     Record<string, string>
   >({});
 
   const update = async () => {
-    const newTasks = await taskManager.initializeTasks();
-    setTasks(newTasks);
-  };
-
-  const filteredTasks = plugin.settings.showCompletedTasks
-    ? tasks
-    : tasks.filter((task) => !task.isCompleted);
-
-  const performScroll = () => {
-    if (firstUncompletedTaskRef.current && containerRef.current) {
-      const containerHeight = containerRef.current.offsetHeight;
-      const taskOffsetTop = firstUncompletedTaskRef.current.offsetTop;
-      const scrollToPosition = taskOffsetTop - containerHeight / 5;
-
-      containerRef.current.scrollTo({
-        top: scrollToPosition,
-        behavior: 'smooth',
-      });
+    const file = plugin.targetFile;
+    if (!file) {
+      setVm(null);
+      return;
     }
+    const content = await plugin.app.vault.cachedRead(file);
+    const now = new Date();
+    const nowMin = now.getHours() * 60 + now.getMinutes();
+    const next = buildViewModel(
+      content,
+      noteDateFor(plugin),
+      nowMin,
+      parseOptionsFor(plugin)
+    );
+    setVm(next);
   };
 
-  const updateBackgroundColors = () => {
+  const updateBackgroundColors = (tasks: TaskLine[]) => {
     const newBackgroundColors = { ...categoryBackgroundColors };
 
     Object.keys(newBackgroundColors).forEach((category) => {
@@ -110,53 +99,16 @@ const TimetableViewComponent = forwardRef<
 
         const hueMatch = color.match(/hsla\((\d+),/);
         if (hueMatch && hueMatch[1]) {
-          const hue = parseInt(hueMatch[1]);
-          existingHues.push(hue);
+          existingHues.push(parseInt(hueMatch[1]));
         }
         newBackgroundColors[category] = color;
         document.documentElement.style.setProperty(`--${className}-bg`, color);
       });
-      if (!plugin.isCategoryColorsReady) {
-        plugin.isCategoryColorsReady = true;
-      }
     });
 
     setCategoryBackgroundColors(newBackgroundColors);
     plugin.categoryBackgroundColors = newBackgroundColors;
   };
-
-  useEffect(() => {
-    const hasNegativeBufferTime = filteredTasks.some(
-      (task, index, allTasks) => {
-        const previousTask = allTasks[index - 1];
-        const bufferTime = calculateBufferTime(
-          previousTask?.endTime || new Date(),
-          task.startTime,
-          index
-        );
-        return (
-          task.originalStartTime &&
-          bufferTime !== null &&
-          bufferTime < 0 &&
-          !task.isCompleted
-        );
-      }
-    );
-
-    if (hasNegativeBufferTime) {
-      if (!noticeRef.current) {
-        noticeRef.current = new Notice(
-          'Warning: One or more tasks are likely to start later than scheduled.',
-          0
-        );
-      }
-    } else {
-      if (noticeRef.current) {
-        noticeRef.current.hide();
-        noticeRef.current = null;
-      }
-    }
-  }, [tasks, filteredTasks]);
 
   useEffect(() => {
     const onFileModify = async (file: any) => {
@@ -167,120 +119,154 @@ const TimetableViewComponent = forwardRef<
     const unregisterEvent = plugin.app.vault.on('modify', onFileModify);
     plugin.registerEvent(unregisterEvent);
     update();
-    updateBackgroundColors();
     return () => plugin.app.vault.off('modify', onFileModify);
   }, [plugin, plugin.targetFile]);
 
   useEffect(() => {
-    const intervalId = setInterval(() => {
-      const topUncompletedTask = tasks.find((task) => !task.isCompleted);
-      if (
-        topUncompletedTask &&
-        topUncompletedTask.startTime &&
-        topUncompletedTask.estimate
-      ) {
-        let duration =
-          new Date().getTime() - topUncompletedTask.startTime.getTime();
-        const estimate = parseInt(topUncompletedTask.estimate) * 60 * 1000;
-        if (duration < 0) {
-          duration += 24 * 60 * 60;
-        }
-        setProgressDuration(duration);
-        setProgressEstimate(estimate);
-      }
-    }, plugin.settings.intervalTime * 1000);
-
-    return () => clearInterval(intervalId);
-  }, [containerRef.current, tasks]);
-
-  useEffect(() => {
-    performScroll();
-  }, [plugin.targetFile]);
-
-  useEffect(() => {
-    updateBackgroundColors();
+    if (vm) {
+      updateBackgroundColors(allTaskLines(vm));
+    }
   }, [
+    vm,
     JSON.stringify(plugin.settings.categoryColors),
     plugin.settings.categoryTransparency,
-    tasks,
   ]);
 
   useImperativeHandle(ref, () => ({
     update,
-    scrollToFirstUncompletedTask: performScroll,
+    scrollToFirstUncompletedTask: () => {},
   }));
+
+  const rowBackground = (task: TaskLine): string | undefined => {
+    if (!plugin.settings.applyBackgroundColorByCategory) return undefined;
+    const category = task.categories[0];
+    return category ? categoryBackgroundColors[category] : undefined;
+  };
+
+  const taskLabel = (task: TaskLine): string => {
+    if (
+      plugin.settings.showCategoryNamesInTask &&
+      task.categories.length > 0
+    ) {
+      return `${task.name} ${task.categories.map((c) => `#${c}`).join(' ')}`;
+    }
+    return task.name;
+  };
 
   return (
     <div
       ref={containerRef}
       className="Timetable dt-content"
       style={{ overflow: 'auto', maxHeight: '100%' }}>
-      {plugin.settings.showProgressBar && (
-        <ProgressBar
-          duration={progressDuration}
-          estimate={progressEstimate}
-          enableOverdueNotice={plugin.settings.enableOverdueNotice}
-        />
-      )}
       <ButtonContainer commandsManager={commandsManager} />
-      <table className="dt-table">
-        <thead>
-          <tr>
-            <th>{plugin.settings.headerNames[0]}</th>
-            {plugin.settings.showEstimate && (
-              <th>{plugin.settings.headerNames[1]}</th>
-            )}
-            {plugin.settings.showStartTime && (
-              <th>{plugin.settings.headerNames[2]}</th>
-            )}
-            <th>{plugin.settings.headerNames[3]}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {filteredTasks.flatMap((task, index, allTasks) => {
-            const previousTask = allTasks[index - 1];
-            const bufferTime = calculateBufferTime(
-              previousTask?.endTime || new Date(),
-              task.startTime,
-              index
-            );
+      {!vm && <div className="dt-empty">No active daily note.</div>}
+      {vm && (
+        <>
+          {vm.frontmatter.error && (
+            <div className="dt-banner dt-banner-error">
+              ⚠ frontmatter: {vm.frontmatter.error}
+            </div>
+          )}
 
-            const rows = [];
+          <section className="dt-section">
+            <div className="dt-section-header">
+              <span className="dt-section-title">TODAY</span>
+              <span
+                className={
+                  'dt-section-summary' +
+                  (vm.today.overBudget ? ' dt-over-budget' : '')
+                }>
+                {formatDuration(vm.today.workTotalMin)} /{' '}
+                {formatDuration(vm.capacityMin)} · ends{' '}
+                {formatClock(vm.today.clockEndMin)}
+              </span>
+            </div>
+            <table className="dt-table">
+              <tbody>
+                {vm.today.rows.map((row, i) => (
+                  <React.Fragment key={`today-${i}`}>
+                    {row.bufferMin !== null && row.bufferMin < 0 && (
+                      <tr className="dt-buffer-row">
+                        <td colSpan={3} className="late">
+                          late {formatDuration(row.bufferMin)}
+                        </td>
+                      </tr>
+                    )}
+                    <tr
+                      className={
+                        'dt-task-row' +
+                        (row.task.status === 'done' ? ' dt-completed' : '')
+                      }
+                      style={{ backgroundColor: rowBackground(row.task) }}>
+                      <td className="dt-clock">{formatClock(row.startMin)}</td>
+                      <td className="dt-name">{taskLabel(row.task)}</td>
+                      <td className="dt-clock">{formatClock(row.endMin)}</td>
+                    </tr>
+                  </React.Fragment>
+                ))}
+                {vm.today.rows.length === 0 && (
+                  <tr>
+                    <td colSpan={3} className="dt-empty">
+                      No tasks today.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </section>
 
-            if (
-              bufferTime &&
-              plugin.settings.showBufferTime &&
-              task !== firstUncompletedTask &&
-              !task.isCompleted
-            ) {
-              rows.push(
-                <BufferTimeRow
-                  key={`buffer-${index}`}
-                  bufferTime={bufferTime}
-                />
-              );
-            }
-
-            rows.push(
-              <TaskRow
-                key={`task-${index}`}
-                task={task}
-                plugin={plugin}
-                bufferTime={bufferTime}
-                categoryBackgroundColors={categoryBackgroundColors}
-                firstUncompletedTaskRef={
-                  task === firstUncompletedTask ? firstUncompletedTaskRef : null
-                }
-                allTasksCompleted={allTasksCompleted}
-                duration={progressDuration}
-                estimate={progressEstimate}
-              />
-            );
-
-            return rows;
-          })}
-        </tbody>
-      </table>
+          <section className="dt-section">
+            <div className="dt-section-header">
+              <span className="dt-section-title">BELOW</span>
+              {vm.below.overBookedDates.length > 0 && (
+                <span className="dt-section-summary dt-over-budget">
+                  over-booked: {vm.below.overBookedDates.join(', ')}
+                </span>
+              )}
+            </div>
+            <table className="dt-table">
+              <tbody>
+                {vm.below.rows.map((row, i) => (
+                  <tr
+                    key={`below-${i}`}
+                    className={
+                      'dt-task-row' +
+                      (row.task.status === 'done' ? ' dt-completed' : '')
+                    }
+                    style={{ backgroundColor: rowBackground(row.task) }}>
+                    <td className="dt-name">
+                      {row.pinned && <span className="dt-pin">📌 </span>}
+                      {taskLabel(row.task)}
+                    </td>
+                    <td className="dt-projection">
+                      {row.endDate ? (
+                        <>
+                          → {formatShort(row.endDate)}
+                          {row.endHoursIntoDayMin !== null && (
+                            <span className="dt-into-day">
+                              {' '}
+                              ({formatDuration(row.endHoursIntoDayMin)} in)
+                            </span>
+                          )}
+                        </>
+                      ) : (
+                        <span className="dt-unscheduled">unscheduled</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+                {vm.below.rows.length === 0 && (
+                  <tr>
+                    <td colSpan={2} className="dt-empty">
+                      Nothing queued.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </section>
+        </>
+      )}
     </div>
   );
 });
