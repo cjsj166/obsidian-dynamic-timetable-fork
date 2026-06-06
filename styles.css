@@ -152,3 +152,31 @@
   font-style: italic;
   padding: 4px;
 }
+
+/* In-editor task header (rendered over a %%task:id%% marker) ---------------- */
+
+.dt-hdr {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.1em;
+  font-size: 0.9em;
+  padding: 1px 6px;
+  border-left: 2px solid var(--interactive-accent);
+  background-color: var(--background-secondary);
+  border-radius: 0 4px 4px 0;
+}
+
+.dt-hdr-time {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-accent);
+  font-weight: 600;
+}
+
+.dt-hdr-name {
+  color: var(--text-normal);
+}
+
+.dt-hdr-orphan {
+  border-left-color: var(--text-error);
+  color: var(--text-muted);
+}
