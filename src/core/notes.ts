@@ -13,7 +13,7 @@ import {
   ParseOptions,
   TaskLine,
 } from './types';
-import { parseDocument } from './document';
+import { isTaskLine, parseDocument, parseTaskLine } from './document';
 
 /** A `%%task:<id>%%` marker line. id chars match the task block-id charset. */
 export const MARKER_RE = /^%%task:([A-Za-z0-9-]+)%%\s*$/;
@@ -148,4 +148,126 @@ export function analyzeNotes(
     firstMarkerLineNo: findFirstMarkerLine(lines),
     ...matchTaskNotes(tasks, segments),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Mutations: assign ids, create markers, reorder. All pure (content -> content).
+// ---------------------------------------------------------------------------
+
+/** Every id already in use, across task lines and note markers. */
+function collectIds(content: string): Set<string> {
+  const lines = content.split('\n');
+  const ids = new Set<string>();
+  const limit = findFirstMarkerLine(lines) ?? lines.length;
+  for (let i = 0; i < limit; i++) {
+    if (isTaskLine(lines[i])) {
+      const t = parseTaskLine(lines[i], i);
+      if (t?.id) ids.add(t.id);
+    }
+  }
+  for (const m of parseNoteSegments(lines)) {
+    ids.add(m.id);
+  }
+  return ids;
+}
+
+/**
+ * Stamp a fresh `^id` on every task line (in the task region) that lacks one.
+ * `idgen` supplies candidate ids; collisions with existing ids are skipped so
+ * the result is always unique. Returns the (possibly unchanged) content.
+ */
+export function assignIds(
+  content: string,
+  idgen: () => string,
+  opts: ParseOptions = DEFAULT_PARSE_OPTIONS
+): string {
+  const lines = content.split('\n');
+  const limit = findFirstMarkerLine(lines) ?? lines.length;
+  const used = collectIds(content);
+
+  let changed = false;
+  for (let i = 0; i < limit; i++) {
+    if (!isTaskLine(lines[i])) continue;
+    const t = parseTaskLine(lines[i], i, opts);
+    if (!t || t.id) continue;
+
+    let id = idgen();
+    let guard = 0;
+    while (used.has(id) && guard++ < 10000) id = idgen();
+    used.add(id);
+    lines[i] = lines[i].replace(/\s*$/, '') + ` ^${id}`;
+    changed = true;
+  }
+  return changed ? lines.join('\n') : content;
+}
+
+/**
+ * Append an empty `%%task:<id>%%` marker block for each task whose id has no
+ * marker yet. Orphan markers (id with no task) are reported, never deleted.
+ */
+export function syncMarkers(
+  content: string,
+  opts: ParseOptions = DEFAULT_PARSE_OPTIONS
+): { content: string; orphans: NoteSegment[] } {
+  const a = analyzeNotes(content, opts);
+  const have = new Set(a.segments.map((s) => s.id));
+  const missing = a.tasks
+    .map((t) => t.id)
+    .filter((id): id is string => !!id && !have.has(id));
+
+  if (missing.length === 0) {
+    return { content, orphans: a.orphanSegments };
+  }
+  const base = content.replace(/\s+$/, '');
+  const additions = missing.map((id) => `${markerLine(id)}\n`).join('\n');
+  return { content: `${base}\n\n${additions}`, orphans: a.orphanSegments };
+}
+
+/**
+ * Rebuild the notes region so the marker blocks follow task order
+ * (today → below); orphan markers are kept, appended after, in original order.
+ * Idempotent. No-op when there are no markers.
+ */
+export function reorderMarkersToTasks(
+  content: string,
+  opts: ParseOptions = DEFAULT_PARSE_OPTIONS
+): string {
+  const lines = content.split('\n');
+  const first = findFirstMarkerLine(lines);
+  if (first === null) return content;
+
+  const a = analyzeNotes(content, opts);
+  const byId = new Map(a.segments.map((s) => [s.id, s]));
+
+  const ordered: NoteSegment[] = [];
+  const taken = new Set<string>();
+  for (const t of a.tasks) {
+    if (t.id && byId.has(t.id) && !taken.has(t.id)) {
+      ordered.push(byId.get(t.id)!);
+      taken.add(t.id);
+    }
+  }
+  for (const s of a.segments) {
+    if (!taken.has(s.id)) {
+      ordered.push(s); // orphan or duplicate — preserve
+      taken.add(s.id);
+    }
+  }
+
+  const prefix = lines.slice(0, first).join('\n').replace(/\s+$/, '');
+  const blocks = ordered.map((s) =>
+    `${markerLine(s.id)}\n${s.text}`.replace(/\s+$/, '')
+  );
+  return `${prefix}\n\n${blocks.join('\n\n')}\n`;
+}
+
+/** Convenience: assign ids, create missing markers, and reorder to task order. */
+export function tidyNotes(
+  content: string,
+  idgen: () => string,
+  opts: ParseOptions = DEFAULT_PARSE_OPTIONS
+): { content: string; orphans: NoteSegment[] } {
+  const withIds = assignIds(content, idgen, opts);
+  const synced = syncMarkers(withIds, opts);
+  return { content: reorderMarkersToTasks(synced.content, opts), orphans: synced.orphans };
 }

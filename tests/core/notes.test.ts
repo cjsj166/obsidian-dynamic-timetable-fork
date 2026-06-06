@@ -1,9 +1,13 @@
 import {
   analyzeNotes,
+  assignIds,
   findFirstMarkerLine,
   matchTaskNotes,
   parseNoteSegments,
   parseTaskRegion,
+  reorderMarkersToTasks,
+  syncMarkers,
+  tidyNotes,
 } from '../../src/core/notes';
 import { parseTaskLine } from '../../src/core/document';
 
@@ -120,5 +124,118 @@ describe('matchTaskNotes — direct', () => {
     // the second duplicate marker is an orphan-by-shadowing? still has a task id,
     // so it is not orphaned; it simply is not the chosen match.
     expect(m.orphanSegments).toHaveLength(0);
+  });
+});
+
+describe('assignIds', () => {
+  const seq = () => {
+    let n = 0;
+    return () => `id${++n}`;
+  };
+
+  it('stamps ^id on tasks lacking one, leaving existing ids alone', () => {
+    const content = ['- [ ] a ^keep', '- [ ] b', '- [ ] c'].join('\n');
+    const out = assignIds(content, seq());
+    const lines = out.split('\n');
+    expect(lines[0]).toBe('- [ ] a ^keep');
+    expect(lines[1]).toMatch(/^- \[ \] b \^id\d+$/);
+    expect(lines[2]).toMatch(/^- \[ \] c \^id\d+$/);
+  });
+
+  it('avoids colliding with an existing id', () => {
+    const content = ['- [ ] a ^id1', '- [ ] b'].join('\n');
+    // generator would yield id1 first (collision) then id2
+    const out = assignIds(content, seq());
+    expect(out.split('\n')[1]).toMatch(/\^id2$/);
+  });
+
+  it('is a no-op when every task already has an id', () => {
+    const content = ['- [ ] a ^x', '- [ ] b ^y'].join('\n');
+    expect(assignIds(content, seq())).toBe(content);
+  });
+
+  it('does not stamp lines in the notes region', () => {
+    const content = ['- [ ] a ^x', '%%task:x%%', '- [ ] looks like a task in a note'].join('\n');
+    expect(assignIds(content, seq())).toBe(content);
+  });
+});
+
+describe('syncMarkers', () => {
+  it('creates a marker block for each task id without one', () => {
+    const content = ['- [ ] a ^x', '- [ ] b ^y'].join('\n');
+    const { content: out, orphans } = syncMarkers(content);
+    expect(out).toContain('%%task:x%%');
+    expect(out).toContain('%%task:y%%');
+    expect(orphans).toHaveLength(0);
+    // re-analyzing pairs both tasks to a segment
+    const a = analyzeNotes(out);
+    expect(a.unassignedTasks).toHaveLength(0);
+  });
+
+  it('reports orphan markers and leaves them in place', () => {
+    const content = ['- [ ] a ^x', '%%task:x%%', 'note', '%%task:gone%%', 'leftover'].join('\n');
+    const { content: out, orphans } = syncMarkers(content);
+    expect(orphans.map((o) => o.id)).toEqual(['gone']);
+    expect(out).toContain('%%task:gone%%');
+    expect(out).toContain('leftover');
+  });
+
+  it('is a no-op when every id already has a marker', () => {
+    const content = ['- [ ] a ^x', '%%task:x%%', 'note'].join('\n');
+    expect(syncMarkers(content).content).toBe(content);
+  });
+});
+
+describe('reorderMarkersToTasks', () => {
+  it('reorders marker blocks to match task order', () => {
+    const content = [
+      '- [ ] first ^a',
+      '- [ ] second ^b',
+      '%%task:b%%',
+      'B body',
+      '%%task:a%%',
+      'A body',
+    ].join('\n');
+    const out = reorderMarkersToTasks(content);
+    const segs = parseNoteSegments(out.split('\n'));
+    expect(segs.map((s) => s.id)).toEqual(['a', 'b']);
+    expect(segs[0].text).toBe('A body');
+    expect(segs[1].text).toBe('B body');
+  });
+
+  it('keeps orphan markers, appended after task-ordered ones', () => {
+    const content = [
+      '- [ ] only ^a',
+      '%%task:gone%%',
+      'orphan body',
+      '%%task:a%%',
+      'A body',
+    ].join('\n');
+    const out = reorderMarkersToTasks(content);
+    const segs = parseNoteSegments(out.split('\n'));
+    expect(segs.map((s) => s.id)).toEqual(['a', 'gone']);
+  });
+
+  it('is idempotent', () => {
+    const content = ['- [ ] a ^a', '- [ ] b ^b', '%%task:b%%', 'B', '%%task:a%%', 'A'].join('\n');
+    const once = reorderMarkersToTasks(content);
+    expect(reorderMarkersToTasks(once)).toBe(once);
+  });
+});
+
+describe('tidyNotes', () => {
+  it('assigns ids, creates markers, and orders them in one pass', () => {
+    const seq = (() => {
+      let n = 0;
+      return () => `g${++n}`;
+    })();
+    const content = ['- [ ] first', '- [ ] second'].join('\n');
+    const { content: out } = tidyNotes(content, seq);
+    const a = analyzeNotes(out);
+    expect(a.unassignedTasks).toHaveLength(0);
+    expect(a.pairs.map((p) => p.task.name)).toEqual(['first', 'second']);
+    expect(a.segments).toHaveLength(2);
+    // ids on tasks line up with markers in order
+    expect(a.pairs.map((p) => p.task.id)).toEqual(a.segments.map((s) => s.id));
   });
 });
