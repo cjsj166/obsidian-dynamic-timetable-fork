@@ -13,6 +13,8 @@ import { parseClock, parseDuration } from './time';
 import { isISODate } from './date';
 
 const CHECKBOX_RE = /^[-+*]\s*\[(.)\]\s*/;
+// Trailing Obsidian block id: whitespace + `^id` at the end of the line.
+const BLOCK_ID_RE = /\s\^([A-Za-z0-9-]+)\s*$/;
 const TAG_RE = /\s#([^\s!#$%&'()*+,.\/:;<=>?@[\\\]^`{|}~]+)/gu;
 const WIKILINK_RE = /\[\[([^\[\]]*\|)?([^\[\]]+)\]\]/g;
 const MDLINK_RE = /\[([^\[\]]+)\]\(.+?\)/g;
@@ -210,7 +212,11 @@ export function parseTaskLine(
     categories.push(tagMatch[1]);
   }
 
-  // Build the display name: strip anchor + duration tokens, tags, and links.
+  // Trailing Obsidian block id (`^id`), used to match a notes marker.
+  const idMatch = body.match(BLOCK_ID_RE);
+  const id = idMatch ? idMatch[1] : null;
+
+  // Build the display name: strip anchor + duration tokens, tags, links, and id.
   let name = body;
   if (dtMatch) {
     name = name.replace(dtMatch[0], '');
@@ -221,6 +227,7 @@ export function parseTaskLine(
     name = name.replace(durTok[0], '');
   }
   name = name
+    .replace(BLOCK_ID_RE, '')
     .replace(TAG_RE, '')
     .replace(WIKILINK_RE, '$2')
     .replace(MDLINK_RE, '$1')
@@ -235,6 +242,7 @@ export function parseTaskLine(
     anchorDate,
     durationMin,
     categories,
+    id,
     parseError: errors.length > 0 ? errors.join('; ') : null,
   };
 }

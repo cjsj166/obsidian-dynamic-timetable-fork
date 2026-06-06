@@ -21,6 +21,8 @@ export interface TaskLine {
   durationMin: number | null;
   /** `#tag` categories, in order of appearance. */
   categories: string[];
+  /** Obsidian block id (`^id`) at the line end, used to match a notes marker. */
+  id: string | null;
   /** Non-null when the line looked like a task but could not be fully parsed. */
   parseError: string | null;
 }
