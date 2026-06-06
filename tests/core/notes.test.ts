@@ -239,3 +239,36 @@ describe('tidyNotes', () => {
     expect(a.pairs.map((p) => p.task.id)).toEqual(a.segments.map((s) => s.id));
   });
 });
+
+describe('reorderMarkersToTasks — by start time', () => {
+  it('orders markers by projected start time, not document order', () => {
+    const content = [
+      '- [ ] 미팅 @ 15:00 ; 1:00 ^late',
+      '- [ ] 아침 @ 9:00 ; 1:00 ^early',
+      '%%task:late%%',
+      'L',
+      '%%task:early%%',
+      'E',
+    ].join('\n');
+    const out = reorderMarkersToTasks(content);
+    const segs = parseNoteSegments(out.split('\n'));
+    expect(segs.map((s) => s.id)).toEqual(['early', 'late']);
+  });
+
+  it('places a late-starting flexible task after an earlier fixed one', () => {
+    const content = [
+      '- [ ] 긴 작업 ; 3:00 ^a', // fills 09:00–12:00
+      '- [ ] 점심 @ 12:00 ; 1:00 ^b', // 12:00
+      '- [ ] 마무리 ; 1:00 ^c', // fills 13:00
+      '%%task:c%%',
+      'C',
+      '%%task:b%%',
+      'B',
+      '%%task:a%%',
+      'A',
+    ].join('\n');
+    const out = reorderMarkersToTasks(content);
+    const segs = parseNoteSegments(out.split('\n'));
+    expect(segs.map((s) => s.id)).toEqual(['a', 'b', 'c']);
+  });
+});

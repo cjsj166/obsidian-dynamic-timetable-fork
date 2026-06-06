@@ -14,6 +14,7 @@ import {
   TaskLine,
 } from './types';
 import { isTaskLine, parseDocument, parseTaskLine } from './document';
+import { projectToday } from './projection';
 
 /** A `%%task:<id>%%` marker line. id chars match the task block-id charset. */
 export const MARKER_RE = /^%%task:([A-Za-z0-9-]+)%%\s*$/;
@@ -224,8 +225,9 @@ export function syncMarkers(
 }
 
 /**
- * Rebuild the notes region so the marker blocks follow task order
- * (today → below); orphan markers are kept, appended after, in original order.
+ * Rebuild the notes region so the marker blocks follow the actual timeline:
+ * today tasks sorted by projected start time, then below tasks in document
+ * order. Orphan markers are kept, appended after, in original order.
  * Idempotent. No-op when there are no markers.
  */
 export function reorderMarkersToTasks(
@@ -237,11 +239,24 @@ export function reorderMarkersToTasks(
   if (first === null) return content;
 
   const a = analyzeNotes(content, opts);
-  const byId = new Map(a.segments.map((s) => [s.id, s]));
+  const fm = a.doc.frontmatter;
 
+  // Earliest projected start per today task (capacity doesn't affect starts).
+  const proj = projectToday(a.doc.today, fm.dayStartMin, fm.workingHoursMin);
+  const startByTask = new Map<TaskLine, number>();
+  for (const r of proj.rows) {
+    const cur = startByTask.get(r.task);
+    startByTask.set(r.task, cur === undefined ? r.startMin : Math.min(cur, r.startMin));
+  }
+  const todaySorted = [...a.doc.today].sort(
+    (x, y) => (startByTask.get(x) ?? 0) - (startByTask.get(y) ?? 0)
+  );
+  const orderTasks = [...todaySorted, ...a.doc.below];
+
+  const byId = new Map(a.segments.map((s) => [s.id, s]));
   const ordered: NoteSegment[] = [];
   const taken = new Set<string>();
-  for (const t of a.tasks) {
+  for (const t of orderTasks) {
     if (t.id && byId.has(t.id) && !taken.has(t.id)) {
       ordered.push(byId.get(t.id)!);
       taken.add(t.id);
