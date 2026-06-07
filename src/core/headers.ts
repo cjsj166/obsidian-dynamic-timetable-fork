@@ -40,24 +40,20 @@ export function computeMarkerHeaders(
   const today = projectToday(a.doc.today, fm.dayStartMin, capacity);
   const below = projectBelow(a.doc.below, fm, noteDate);
 
-  // Aggregate today rows per task (a split task has several rows).
+  // Aggregate today rows per task (a split task has several segments).
   const todayByTask = new Map<
     TaskLine,
-    { start: number; end: number; count: number; fixed: boolean }
+    { segments: { start: number; end: number }[]; fixed: boolean }
   >();
   for (const r of today.rows) {
     const cur = todayByTask.get(r.task);
     if (!cur) {
       todayByTask.set(r.task, {
-        start: r.startMin,
-        end: r.endMin,
-        count: 1,
+        segments: [{ start: r.startMin, end: r.endMin }],
         fixed: r.fixed,
       });
     } else {
-      cur.start = Math.min(cur.start, r.startMin);
-      cur.end = Math.max(cur.end, r.endMin);
-      cur.count += 1;
+      cur.segments.push({ start: r.startMin, end: r.endMin });
       cur.fixed = cur.fixed || r.fixed;
     }
   }
@@ -83,15 +79,20 @@ export function computeMarkerHeaders(
 
     const todayAgg = todayByTask.get(task);
     if (todayAgg) {
+      // Each segment as its own clock range, so a split reads "09:00–12:00, 13:00–15:00".
+      const segs = [...todayAgg.segments].sort((a, b) => a.start - b.start);
+      const timeLabel = segs
+        .map((s) => `${formatClock(s.start)}–${formatClock(s.end)}`)
+        .join(', ');
       return {
         ...base,
         orphan: false,
         section: 'today',
         status: task.status,
         name: task.name,
-        timeLabel: `${formatClock(todayAgg.start)}–${formatClock(todayAgg.end)}`,
+        timeLabel,
         fixed: todayAgg.fixed,
-        splitCount: todayAgg.count,
+        splitCount: segs.length,
         parseError: task.parseError,
       };
     }

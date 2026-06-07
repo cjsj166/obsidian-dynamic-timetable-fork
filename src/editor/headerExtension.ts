@@ -56,9 +56,6 @@ class HeaderWidget extends WidgetType {
       el.createSpan({ cls: 'dt-pin', text: ' 📌' });
     }
     el.createSpan({ cls: 'dt-hdr-name', text: ` ${this.h.name ?? ''}` });
-    if (this.h.splitCount > 1) {
-      el.createSpan({ cls: 'dt-segment', text: ` (${this.h.splitCount}분할)` });
-    }
     if (this.h.parseError) {
       el.createSpan({ cls: 'dt-error-mark', text: ' ⚠' });
       el.title = this.h.parseError;
