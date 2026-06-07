@@ -1,5 +1,37 @@
 # Progress
 
+## Current state (2026-06) — unified inline model
+
+The plugin is a **Tasks Chute** daily planner built on the existing Dynamic
+Timetable repo (React sidebar kept for now but superseded). The working model:
+
+- **One region per daily note**: write `- [ ] task @9:00 ; 1:00` lines with
+  freeform memos directly under each (native markdown — images, math, code).
+  A body `---` divider splits **today** (clock-scheduled) from **below**
+  (capacity-queued future days). Memos can't use `---` (use `***`).
+- **Inline rendering** (CM6 editor extensions, `src/editor/`):
+  - A projected-time chip is prepended to each task line; the raw `@`/`;`/`^id`
+    tokens are hidden and revealed only when the cursor is on that line. Only
+    tasks with a time condition (`@`/`;`) render.
+  - A **left time ruler** beside each today memo (hour labels + 30-min ticks),
+    an `Idle HH:MM–HH:MM` chip for gaps, and a short red **now** tick (today).
+  - **Split tasks**: a task split around a fixed appointment keeps its `- [ ]`
+    line for segment 1 (`(1/N)`) and gets `%%task:<id> k/n%%` continuation
+    blocks for later segments, at their chronological position with their own
+    memo. Auto-created/merged by `layoutToday`.
+  - **Auto-layout**: when the cursor leaves a task block, today blocks are
+    ordered by start time and continuations reconciled (cursor-safe).
+  - **Alt+T then ↑/↓**: move a today task block (line + memo) by one fill
+    priority among flexible tasks.
+- **Pure core** (`src/core/`, no `obsidian` import): `document`, `projection`
+  (today split + below capacity + gaps), `timeline` (per-block render rows),
+  `layout` (split continuations + sort), `time`, `date`, `viewmodel`.
+
+Tests: `npx jest` (76 tests). Build/deploy: `npm run build` then `node deploy.mjs`.
+Remaining: optionally retire the React sidebar; reading-mode rendering.
+
+The milestones below are the original bootstrap plan, kept for history.
+
 ## Implementation Order
 
 Tasks Chute v0.1.0를 향한 단계. 각 단계는 **이전 단계가 동작해야 다음으로 진행**. 순수 함수부터 빌드해 UI 변경에 코어가 흔들리지 않도록 한다.
