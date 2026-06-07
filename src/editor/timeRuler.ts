@@ -10,7 +10,7 @@ import { todayISO } from '../core/date';
 const ISO_RE = /(\d{4}-\d{2}-\d{2})/;
 
 // Drop the fine ruler when one hour would render shorter than this — then only
-// the header start time (rendered separately) conveys the schedule.
+// the start label (at the axis top) conveys the schedule.
 const MIN_HOUR_PX = 22;
 const TICK_30_LEN = 4;
 const TICK_HOUR_LEN = 8;
@@ -24,40 +24,19 @@ function noteDateFor(view: EditorView): string {
   return m ? m[1] : todayISO();
 }
 
-/** 0-based line indices of every `%%task:<id>%%` marker, ascending. */
-function allMarkerLines(doc: { lines: number; line: (n: number) => { text: string } }): number[] {
-  const out: number[] = [];
-  for (let i = 1; i <= doc.lines; i++) {
-    if (MARKER_RE.test(doc.line(i).text)) out.push(i - 1);
-  }
-  return out;
-}
-
-/**
- * The vertical pixel band a task block occupies in content coordinates: from
- * just below its marker line to the top of the next marker (or document end).
- */
-function blockBand(
-  view: EditorView,
-  markerLineNo: number,
-  markerLines: number[]
-): { top: number; bottom: number } {
-  const doc = view.state.doc;
-  const markerLine = doc.line(markerLineNo + 1);
-  const headBottom = view.lineBlockAt(markerLine.from).bottom;
-
-  const next = markerLines.find((n) => n > markerLineNo);
-  let bottom: number;
-  if (next !== undefined) {
-    bottom = view.lineBlockAt(doc.line(next + 1).from).top;
-  } else {
-    bottom = view.lineBlockAt(doc.line(doc.lines).from).bottom;
-  }
-  return { top: headBottom, bottom };
-}
-
 class TimeRulerLayer {
   readonly dom: HTMLElement;
+  private entries: RulerEntry[] = [];
+  private markerLines: number[] = [];
+  private rafPending = false;
+  private readonly onScroll = () => {
+    if (this.rafPending) return;
+    this.rafPending = true;
+    requestAnimationFrame(() => {
+      this.rafPending = false;
+      this.position();
+    });
+  };
 
   constructor(
     private view: EditorView,
@@ -66,79 +45,117 @@ class TimeRulerLayer {
     this.dom = document.createElement('div');
     this.dom.className = 'dt-ruler-layer';
     view.scrollDOM.appendChild(this.dom);
-    this.render();
+    view.scrollDOM.addEventListener('scroll', this.onScroll, { passive: true });
+    this.computeData();
+    this.position();
   }
 
   update(u: ViewUpdate): void {
-    if (u.docChanged || u.geometryChanged || u.viewportChanged) {
-      this.view = u.view;
-      this.render();
+    this.view = u.view;
+    if (u.docChanged) {
+      this.computeData();
+      this.position();
+    } else if (u.geometryChanged || u.viewportChanged) {
+      this.position();
     }
   }
 
   destroy(): void {
+    this.view.scrollDOM.removeEventListener('scroll', this.onScroll);
     this.dom.remove();
   }
 
-  private render(): void {
+  /** Parse + project (cheap, but only needed when the document text changes). */
+  private computeData(): void {
+    const content = this.view.state.doc.toString();
+    this.entries = computeRuler(content, noteDateFor(this.view), this.opts());
+
+    const doc = this.view.state.doc;
+    const lines: number[] = [];
+    for (let i = 1; i <= doc.lines; i++) {
+      if (MARKER_RE.test(doc.line(i).text)) lines.push(i - 1);
+    }
+    this.markerLines = lines;
+  }
+
+  /** Redraw the ruler from cached data using current editor geometry. */
+  private position(): void {
     const view = this.view;
     this.dom.replaceChildren();
+    if (this.entries.length === 0) return;
 
-    const content = view.state.doc.toString();
-    const entries = computeRuler(content, noteDateFor(view), this.opts());
-    if (entries.length === 0) return;
+    // Position everything relative to the layer's own box, converting CM's
+    // content coordinates (relative to documentTop) into layer-local pixels.
+    // This is correct whether or not .cm-scroller is a positioned ancestor.
+    const layerRect = this.dom.getBoundingClientRect();
+    const docTop = view.documentTop;
+    const toLocalY = (contentY: number): number => docTop + contentY - layerRect.top;
 
-    const markerLines = allMarkerLines(view.state.doc);
-
-    // Text left edge in scroller coordinates — the ruler lives just left of it.
-    const sRect = view.scrollDOM.getBoundingClientRect();
     const cRect = view.contentDOM.getBoundingClientRect();
-    const rulerX = Math.max(2, cRect.left - sRect.left + view.scrollDOM.scrollLeft);
+    const rulerX = Math.max(2, cRect.left - layerRect.left);
 
-    for (const e of entries) {
+    for (const e of this.entries) {
       if (e.markerLineNo + 1 > view.state.doc.lines) continue;
-      this.renderEntry(e, markerLines, rulerX);
+      this.renderEntry(e, rulerX, toLocalY);
     }
   }
 
-  private renderEntry(e: RulerEntry, markerLines: number[], rulerX: number): void {
-    const { top, bottom } = blockBand(this.view, e.markerLineNo, markerLines);
+  /** Content-coordinate band [top, bottom] from this marker to the next. */
+  private blockBand(markerLineNo: number): { top: number; bottom: number } {
+    const view = this.view;
+    const doc = view.state.doc;
+    const markerLine = doc.line(markerLineNo + 1);
+    const top = view.lineBlockAt(markerLine.from).bottom; // axis starts below header
+
+    const next = this.markerLines.find((n) => n > markerLineNo);
+    const bottom =
+      next !== undefined
+        ? view.lineBlockAt(doc.line(next + 1).from).top
+        : view.lineBlockAt(doc.line(doc.lines).from).bottom;
+    return { top, bottom };
+  }
+
+  private renderEntry(
+    e: RulerEntry,
+    rulerX: number,
+    toLocalY: (y: number) => number
+  ): void {
+    const { top, bottom } = this.blockBand(e.markerLineNo);
     const height = bottom - top;
     if (height <= 2) return;
 
-    // Gap label sits at the very top of the block (where idle time precedes it).
     if (e.gapBefore) {
-      const g = this.gapLabel(
-        `공백 ${formatClock(e.gapBefore.startMin)}–${formatClock(e.gapBefore.endMin)}`,
-        top,
-        rulerX
-      );
-      this.dom.appendChild(g);
+      this.add('dt-ruler-gap', rulerX, toLocalY(top), {
+        text: `공백 ${formatClock(e.gapBefore.startMin)}–${formatClock(
+          e.gapBefore.endMin
+        )}`,
+      });
     }
 
     if (e.activeMin <= 0) return;
     const pxPerMin = height / e.activeMin;
-    if (pxPerMin * 60 < MIN_HOUR_PX) return; // too cramped — header start only
+
+    // Start label anchors the axis top to the task's start time.
+    this.add('dt-ruler-label', rulerX - TICK_HOUR_LEN - 2, toLocalY(top), {
+      text: formatClock(e.startMin),
+    });
+
+    if (pxPerMin * 60 < MIN_HOUR_PX) return; // too cramped for the fine ruler
 
     // Vertical guide line spanning the block.
-    const line = document.createElement('div');
-    line.className = 'dt-ruler-line';
-    line.style.left = `${rulerX - 1}px`;
-    line.style.top = `${top}px`;
+    const line = this.add('dt-ruler-line', rulerX - 1, toLocalY(top), {});
     line.style.height = `${height}px`;
-    this.dom.appendChild(line);
 
-    // Walk the segments, mapping active minutes to pixels. The gap between
-    // segments (a fixed appointment) consumes no pixels, so labels jump.
+    // Walk segments, mapping active minutes to pixels. The gap between segments
+    // (a fixed appointment) consumes no pixels, so labels jump.
     let acc = 0;
     e.segments.forEach((s, i) => {
-      // A resumed segment (not the first) whose start is an hour: label it.
       if (i > 0 && s.startMin % 60 === 0) {
-        this.tick(top + acc * pxPerMin, rulerX, true, formatClock(s.startMin));
+        this.tick(toLocalY(top + acc * pxPerMin), rulerX, true, formatClock(s.startMin));
       }
       let b = Math.ceil((s.startMin + 1) / 30) * 30;
       for (; b <= s.endMin; b += 30) {
-        const y = top + (acc + (b - s.startMin)) * pxPerMin;
+        const y = toLocalY(top + (acc + (b - s.startMin)) * pxPerMin);
         const hour = b % 60 === 0;
         this.tick(y, rulerX, hour, hour ? formatClock(b) : null);
       }
@@ -148,30 +165,31 @@ class TimeRulerLayer {
 
   private tick(y: number, rulerX: number, hour: boolean, label: string | null): void {
     const len = hour ? TICK_HOUR_LEN : TICK_30_LEN;
-    const t = document.createElement('div');
-    t.className = 'dt-ruler-tick' + (hour ? ' dt-ruler-tick-hour' : '');
-    t.style.left = `${rulerX - len}px`;
-    t.style.top = `${y}px`;
+    const t = this.add(
+      'dt-ruler-tick' + (hour ? ' dt-ruler-tick-hour' : ''),
+      rulerX - len,
+      y,
+      {}
+    );
     t.style.width = `${len}px`;
-    this.dom.appendChild(t);
-
     if (label) {
-      const l = document.createElement('div');
-      l.className = 'dt-ruler-label';
-      l.textContent = label;
-      l.style.left = `${rulerX - TICK_HOUR_LEN - 2}px`;
-      l.style.top = `${y}px`;
-      this.dom.appendChild(l);
+      this.add('dt-ruler-label', rulerX - TICK_HOUR_LEN - 2, y, { text: label });
     }
   }
 
-  private gapLabel(text: string, y: number, rulerX: number): HTMLElement {
-    const l = document.createElement('div');
-    l.className = 'dt-ruler-gap';
-    l.textContent = text;
-    l.style.left = `${rulerX - TICK_HOUR_LEN - 2}px`;
-    l.style.top = `${y}px`;
-    return l;
+  private add(
+    cls: string,
+    left: number,
+    top: number,
+    opts: { text?: string }
+  ): HTMLElement {
+    const el = document.createElement('div');
+    el.className = cls;
+    if (opts.text !== undefined) el.textContent = opts.text;
+    el.style.left = `${left}px`;
+    el.style.top = `${top}px`;
+    this.dom.appendChild(el);
+    return el;
   }
 }
 
