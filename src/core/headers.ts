@@ -3,7 +3,7 @@
 
 import { DEFAULT_PARSE_OPTIONS, ParseOptions, TaskStatus } from './types';
 import { resolveBlocks } from './blocks';
-import { formatClock, formatDuration } from './time';
+import { formatClock } from './time';
 import { formatShort } from './date';
 
 export interface MarkerHeader {
@@ -96,11 +96,11 @@ export function computeMarkerHeaders(
       };
     }
 
-    // below
+    // below — show the date and projected clock range, e.g. "→ Mon 6/8 11:00–14:00".
     const label = b.endDate
       ? `→ ${formatShort(b.endDate)}` +
-        (b.endHoursIntoDayMin !== null
-          ? ` (${formatDuration(b.endHoursIntoDayMin)})`
+        (b.belowStartMin !== null && b.belowEndMin !== null
+          ? ` ${formatClock(b.belowStartMin)}–${formatClock(b.belowEndMin)}`
           : '')
       : 'unscheduled';
     return {

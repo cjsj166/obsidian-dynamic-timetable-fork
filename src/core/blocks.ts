@@ -44,6 +44,9 @@ export interface ResolvedBlock {
   // below only ----------------------------------------------------------------
   endDate: string | null;
   endHoursIntoDayMin: number | null;
+  /** Projected clock start/end on the end date (day_start + hours-into-day). */
+  belowStartMin: number | null;
+  belowEndMin: number | null;
 }
 
 export interface ResolvedNotes {
@@ -97,6 +100,8 @@ export function resolveBlocks(
       fixed: false,
       endDate: null as string | null,
       endHoursIntoDayMin: null as number | null,
+      belowStartMin: null as number | null,
+      belowEndMin: null as number | null,
     };
 
     if (!task) return { ...base, kind: 'orphan' };
@@ -116,12 +121,27 @@ export function resolveBlocks(
     }
 
     const r = belowByTask.get(task);
+    const dur = task.durationMin ?? 0;
+    let belowStartMin: number | null = null;
+    let belowEndMin: number | null = null;
+    if (r) {
+      if (r.pinned) {
+        const s = task.anchorMinutes ?? fm.dayStartMin;
+        belowStartMin = s;
+        belowEndMin = s + dur;
+      } else if (r.endHoursIntoDayMin !== null) {
+        belowEndMin = fm.dayStartMin + r.endHoursIntoDayMin;
+        belowStartMin = fm.dayStartMin + Math.max(0, r.endHoursIntoDayMin - dur);
+      }
+    }
     return {
       ...base,
       kind: 'below',
       fixed: r ? r.pinned : false,
       endDate: r ? r.endDate : null,
       endHoursIntoDayMin: r ? r.endHoursIntoDayMin : null,
+      belowStartMin,
+      belowEndMin,
     };
   });
 

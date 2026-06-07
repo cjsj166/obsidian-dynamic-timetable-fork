@@ -27,6 +27,7 @@ class TimeRulerLayer {
   private entries: RulerEntry[] = [];
   private markerLines: number[] = [];
   private rafPending = false;
+  private nowTimer: number | null = null;
   private readonly onScroll = () => {
     if (this.rafPending) return;
     this.rafPending = true;
@@ -44,6 +45,8 @@ class TimeRulerLayer {
     this.dom.className = 'dt-ruler-layer';
     view.scrollDOM.appendChild(this.dom);
     view.scrollDOM.addEventListener('scroll', this.onScroll, { passive: true });
+    // Keep the "now" marker fresh without a document change.
+    this.nowTimer = window.setInterval(() => this.position(), 60_000);
     this.computeData();
     this.position();
   }
@@ -60,6 +63,7 @@ class TimeRulerLayer {
 
   destroy(): void {
     this.view.scrollDOM.removeEventListener('scroll', this.onScroll);
+    if (this.nowTimer !== null) window.clearInterval(this.nowTimer);
     this.dom.remove();
   }
 
@@ -96,6 +100,29 @@ class TimeRulerLayer {
       if (e.markerLineNo + 1 > view.state.doc.lines) continue;
       this.renderEntry(e, rulerX, toLocalY);
     }
+
+    this.renderNow(rulerX, toLocalY, cRect.width);
+  }
+
+  /** A red line at the current clock time, on today's note only. */
+  private renderNow(
+    rulerX: number,
+    toLocalY: (y: number) => number,
+    width: number
+  ): void {
+    if (noteDateFor(this.view) !== todayISO()) return;
+    const now = new Date();
+    const nowMin = now.getHours() * 60 + now.getMinutes();
+
+    for (const e of this.entries) {
+      if (e.endMin <= e.startMin) continue;
+      if (nowMin < e.startMin || nowMin >= e.endMin) continue;
+      const { top, bottom } = this.blockBand(e.markerLineNo);
+      const frac = (nowMin - e.startMin) / (e.endMin - e.startMin);
+      const line = this.add('dt-ruler-now', rulerX - TICK_HOUR_LEN, toLocalY(top + frac * (bottom - top)), {});
+      line.style.width = `${Math.max(40, width)}px`;
+      return;
+    }
   }
 
   /** Content-coordinate band [top, bottom] from this marker to the next. */
@@ -126,7 +153,7 @@ class TimeRulerLayer {
         this.view.state.doc.line(e.markerLineNo + 1).from
       ).top;
       this.add('dt-ruler-gapchip', rulerX, toLocalY(markerTop), {
-        text: `공백시간 ${formatClock(e.gapBefore.startMin)}–${formatClock(
+        text: `Idle ${formatClock(e.gapBefore.startMin)}–${formatClock(
           e.gapBefore.endMin
         )}`,
       });

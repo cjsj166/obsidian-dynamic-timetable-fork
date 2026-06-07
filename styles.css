@@ -248,6 +248,14 @@
   transform: translate(-100%, -50%);
 }
 
+.dt-ruler-now {
+  position: absolute;
+  height: 2px;
+  background-color: var(--color-red, #e5534b);
+  transform: translateY(-50%);
+  opacity: 0.85;
+}
+
 .dt-ruler-gapchip {
   position: absolute;
   transform: translateY(-100%);
