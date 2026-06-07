@@ -6,12 +6,10 @@ import { MARKER_RE } from '../core/notes';
 import { RulerEntry, computeRuler } from '../core/ruler';
 import { formatClock } from '../core/time';
 import { todayISO } from '../core/date';
+import { MIN_HOUR_PX } from './rulerConfig';
 
 const ISO_RE = /(\d{4}-\d{2}-\d{2})/;
 
-// Drop the fine ruler when one hour would render shorter than this — then only
-// the start label (at the axis top) conveys the schedule.
-const MIN_HOUR_PX = 22;
 const TICK_30_LEN = 4;
 const TICK_HOUR_LEN = 8;
 

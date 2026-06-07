@@ -3,6 +3,7 @@ import { EditorView } from '@codemirror/view';
 import { runRollover } from './Rollover';
 import { timetableHeaderExtension } from './editor/headerExtension';
 import { timeRulerExtension } from './editor/timeRuler';
+import { spacerExtension } from './editor/spacer';
 import { autoTidyExtension, genBlockId } from './editor/autoTidy';
 import { applyMinimalChange } from './editor/writeback';
 import { tidyNotes } from './core/notes';
@@ -90,6 +91,7 @@ export default class DynamicTimetable extends Plugin {
     this.registerViews();
     this.registerEditorExtension([
       timetableHeaderExtension(this),
+      spacerExtension(this),
       timeRulerExtension(this),
       autoTidyExtension(this),
     ]);

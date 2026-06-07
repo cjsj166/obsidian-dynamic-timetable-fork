@@ -247,3 +247,7 @@
   white-space: nowrap;
   transform: translate(-100%, -50%);
 }
+
+.dt-ruler-spacer {
+  pointer-events: none;
+}
