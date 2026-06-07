@@ -114,7 +114,10 @@ function move(view: EditorView, dir: 'up' | 'down', opts: ParseOptions): boolean
   return true;
 }
 
-/** Alt+↑/↓ moves the whole today task block (line + memo) by one priority. */
+/**
+ * Alt+T then ↑/↓ (a key chord) moves the whole today task block (line + memo)
+ * by one priority. Using a chord avoids clashing with Alt+↑/↓ line-move.
+ */
 export function taskMoveKeymap(plugin: DynamicTimetable) {
   const opts = (): ParseOptions => ({
     estimateDelimiter: plugin.settings.taskEstimateDelimiter,
@@ -122,8 +125,8 @@ export function taskMoveKeymap(plugin: DynamicTimetable) {
   });
   return Prec.high(
     keymap.of([
-      { key: 'Alt-ArrowUp', run: (view) => move(view, 'up', opts()) },
-      { key: 'Alt-ArrowDown', run: (view) => move(view, 'down', opts()) },
+      { key: 'Alt-t ArrowUp', run: (view) => move(view, 'up', opts()) },
+      { key: 'Alt-t ArrowDown', run: (view) => move(view, 'down', opts()) },
     ])
   );
 }
