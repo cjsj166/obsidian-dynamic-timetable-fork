@@ -29,6 +29,12 @@ export interface TodayRow {
   conflict: boolean;
 }
 
+/** An idle span between scheduled work (display-only; holds no task/note). */
+export interface GapSpan {
+  startMin: number;
+  endMin: number;
+}
+
 export interface TodayProjection {
   rows: TodayRow[];
   clockEndMin: number;
@@ -37,6 +43,8 @@ export interface TodayProjection {
   overBudget: boolean;
   /** True when any two fixed appointments overlap in time. */
   hasConflict: boolean;
+  /** Idle spans (no task) between day_start and the last row, in time order. */
+  gaps: GapSpan[];
 }
 
 interface Interval {
@@ -173,6 +181,20 @@ export function projectToday(
 
   const clockEndMin = rows.reduce((m, r) => Math.max(m, r.endMin), dayStartMin);
 
+  // 5. Idle gaps: the complement of the covered intervals within
+  // [dayStart, clockEnd]. A split task's internal appointment is itself a row,
+  // so only true no-task spans surface here.
+  const covered = rows
+    .filter((r) => r.endMin > r.startMin)
+    .map((r) => ({ start: r.startMin, end: r.endMin }))
+    .sort((a, b) => a.start - b.start);
+  const gaps: GapSpan[] = [];
+  let cursor = dayStartMin;
+  for (const iv of covered) {
+    if (iv.start > cursor) gaps.push({ startMin: cursor, endMin: iv.start });
+    cursor = Math.max(cursor, iv.end);
+  }
+
   return {
     rows,
     clockEndMin,
@@ -180,6 +202,7 @@ export function projectToday(
     capacityMin,
     overBudget: workTotalMin > capacityMin,
     hasConflict,
+    gaps,
   };
 }
 

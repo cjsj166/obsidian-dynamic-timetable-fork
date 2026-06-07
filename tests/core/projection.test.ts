@@ -110,6 +110,41 @@ describe('projectToday — fixture 2 (split around a fixed appointment)', () => 
   });
 });
 
+describe('projectToday — idle gaps', () => {
+  it('reports a gap from day_start to the first task and between tasks', () => {
+    const doc = parseDocument(
+      [
+        '---',
+        'day_start: 9:00',
+        '---',
+        '- [ ] 출근 @ 10:00 ; 1:00', // 10:00–11:00 (gap 09:00–10:00 before it)
+        '- [ ] 미팅 @ 14:00 ; 1:00', // 14:00–15:00 (gap 11:00–14:00 between)
+      ].join('\n')
+    );
+    const proj = projectToday(doc.today, doc.frontmatter.dayStartMin, HM(8));
+    expect(proj.gaps.map((g) => [g.startMin, g.endMin])).toEqual([
+      [HM(9), HM(10)],
+      [HM(11), HM(14)],
+    ]);
+  });
+
+  it('reports no gap inside a task split around an appointment', () => {
+    // 긴 작업 fills 09:00–11:00 then 12:00–14:00; the 11:00 meeting fills the
+    // middle, so there is no idle gap.
+    const doc = parseDocument(
+      [
+        '---',
+        'day_start: 9:00',
+        '---',
+        '- [ ] 긴 작업 ; 4:00',
+        '- [ ] 미팅 @ 11:00 ; 1:00',
+      ].join('\n')
+    );
+    const proj = projectToday(doc.today, doc.frontmatter.dayStartMin, HM(7));
+    expect(proj.gaps).toEqual([]);
+  });
+});
+
 describe('projectToday — overlapping fixed appointments', () => {
   const doc = parseDocument(
     [

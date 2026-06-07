@@ -180,3 +180,52 @@
   border-left-color: var(--text-error);
   color: var(--text-muted);
 }
+
+/* Left time ruler (per-today-task local axis beside the memo) -------------- */
+
+.dt-ruler-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+  z-index: 4;
+}
+
+.dt-ruler-line {
+  position: absolute;
+  width: 1px;
+  background-color: var(--background-modifier-border);
+}
+
+.dt-ruler-tick {
+  position: absolute;
+  height: 1px;
+  background-color: var(--background-modifier-border);
+  transform: translateY(-50%);
+}
+
+.dt-ruler-tick-hour {
+  background-color: var(--text-faint);
+}
+
+.dt-ruler-label {
+  position: absolute;
+  font-size: 0.7em;
+  line-height: 1;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  transform: translate(-100%, -50%);
+}
+
+.dt-ruler-gap {
+  position: absolute;
+  font-size: 0.7em;
+  line-height: 1;
+  color: var(--text-faint);
+  font-style: italic;
+  white-space: nowrap;
+  transform: translate(-100%, -50%);
+}

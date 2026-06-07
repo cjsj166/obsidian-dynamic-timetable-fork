@@ -2,6 +2,7 @@ import { Plugin, WorkspaceLeaf, TFile, Notice, Editor } from 'obsidian';
 import { EditorView } from '@codemirror/view';
 import { runRollover } from './Rollover';
 import { timetableHeaderExtension } from './editor/headerExtension';
+import { timeRulerExtension } from './editor/timeRuler';
 import { autoTidyExtension, genBlockId } from './editor/autoTidy';
 import { applyMinimalChange } from './editor/writeback';
 import { tidyNotes } from './core/notes';
@@ -89,6 +90,7 @@ export default class DynamicTimetable extends Plugin {
     this.registerViews();
     this.registerEditorExtension([
       timetableHeaderExtension(this),
+      timeRulerExtension(this),
       autoTidyExtension(this),
     ]);
     await this.layoutReadyHandler();
