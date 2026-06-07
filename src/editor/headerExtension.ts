@@ -9,7 +9,7 @@ import {
 import { Range } from '@codemirror/state';
 import { editorInfoField } from 'obsidian';
 import type DynamicTimetable from '../main';
-import { MarkerHeader, computeGapHeaders, computeMarkerHeaders } from '../core/headers';
+import { MarkerHeader, computeMarkerHeaders } from '../core/headers';
 import { ParseOptions } from '../core/types';
 import { todayISO } from '../core/date';
 
@@ -68,29 +68,6 @@ class HeaderWidget extends WidgetType {
   }
 }
 
-/** A display-only gap header, rendered on its own line like a task header. */
-class GapWidget extends WidgetType {
-  constructor(readonly label: string) {
-    super();
-  }
-
-  eq(other: GapWidget): boolean {
-    return other.label === this.label;
-  }
-
-  toDOM(): HTMLElement {
-    const wrap = document.createElement('div');
-    wrap.className = 'dt-hdr-gapline';
-    const span = wrap.createSpan({ cls: 'dt-hdr dt-hdr-gap' });
-    span.createSpan({ cls: 'dt-hdr-time', text: this.label });
-    return wrap;
-  }
-
-  ignoreEvent(): boolean {
-    return true;
-  }
-}
-
 function noteDateFor(view: EditorView): string {
   const info = view.state.field(editorInfoField, false) as
     | { file?: { basename?: string } | null }
@@ -107,24 +84,9 @@ function buildDecorations(
   const content = view.state.doc.toString();
   const noteDate = noteDateFor(view);
   const headers = computeMarkerHeaders(content, noteDate, opts);
-  const gaps = computeGapHeaders(content, noteDate, opts);
   const doc = view.state.doc;
   const sel = view.state.selection;
   const ranges: Range<Decoration>[] = [];
-
-  // Display-only gap headers, on their own line above the following block.
-  for (const g of gaps) {
-    const lineNo = g.beforeMarkerLineNo + 1;
-    if (lineNo < 1 || lineNo > doc.lines) continue;
-    const line = doc.line(lineNo);
-    ranges.push(
-      Decoration.widget({
-        widget: new GapWidget(g.label),
-        block: true,
-        side: -1,
-      }).range(line.from)
-    );
-  }
 
   // Task header over each marker line.
   for (const h of headers) {
