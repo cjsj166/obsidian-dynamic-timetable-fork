@@ -2,14 +2,13 @@ import { EditorView, ViewPlugin, ViewUpdate } from '@codemirror/view';
 import { editorInfoField } from 'obsidian';
 import type DynamicTimetable from '../main';
 import { ParseOptions } from '../core/types';
-import { MARKER_RE } from '../core/notes';
-import { RulerEntry, computeRuler } from '../core/ruler';
+import { GapSpan } from '../core/projection';
+import { TimelineRow, resolveTimeline } from '../core/timeline';
 import { formatClock } from '../core/time';
 import { todayISO } from '../core/date';
 import { MIN_HOUR_PX } from './rulerConfig';
 
 const ISO_RE = /(\d{4}-\d{2}-\d{2})/;
-
 const TICK_30_LEN = 4;
 const TICK_HOUR_LEN = 8;
 
@@ -22,10 +21,15 @@ function noteDateFor(view: EditorView): string {
   return m ? m[1] : todayISO();
 }
 
+const activeMinOf = (row: TimelineRow): number =>
+  row.segments.reduce((s, x) => s + (x.endMin - x.startMin), 0);
+
+/** Per-today-task left time ruler, drawn in a non-intrusive overlay layer. */
 class TimeRulerLayer {
   readonly dom: HTMLElement;
-  private entries: RulerEntry[] = [];
-  private markerLines: number[] = [];
+  private rows: TimelineRow[] = [];
+  private boundaries: number[] = [];
+  private gaps: GapSpan[] = [];
   private rafPending = false;
   private nowTimer: number | null = null;
   private readonly onScroll = () => {
@@ -45,7 +49,6 @@ class TimeRulerLayer {
     this.dom.className = 'dt-ruler-layer';
     view.scrollDOM.appendChild(this.dom);
     view.scrollDOM.addEventListener('scroll', this.onScroll, { passive: true });
-    // Keep the "now" marker fresh without a document change.
     this.nowTimer = window.setInterval(() => this.position(), 60_000);
     this.computeData();
     this.position();
@@ -67,28 +70,22 @@ class TimeRulerLayer {
     this.dom.remove();
   }
 
-  /** Parse + project (cheap, but only needed when the document text changes). */
   private computeData(): void {
-    const content = this.view.state.doc.toString();
-    this.entries = computeRuler(content, noteDateFor(this.view), this.opts());
-
-    const doc = this.view.state.doc;
-    const lines: number[] = [];
-    for (let i = 1; i <= doc.lines; i++) {
-      if (MARKER_RE.test(doc.line(i).text)) lines.push(i - 1);
-    }
-    this.markerLines = lines;
+    const tl = resolveTimeline(
+      this.view.state.doc.toString(),
+      noteDateFor(this.view),
+      this.opts()
+    );
+    this.rows = tl.rows.filter((r) => r.kind === 'today' && r.segments.length > 0);
+    this.boundaries = tl.boundaries;
+    this.gaps = tl.gaps;
   }
 
-  /** Redraw the ruler from cached data using current editor geometry. */
   private position(): void {
     const view = this.view;
     this.dom.replaceChildren();
-    if (this.entries.length === 0) return;
+    if (this.rows.length === 0) return;
 
-    // Position everything relative to the layer's own box, converting CM's
-    // content coordinates (relative to documentTop) into layer-local pixels.
-    // This is correct whether or not .cm-scroller is a positioned ancestor.
     const layerRect = this.dom.getBoundingClientRect();
     const docTop = view.documentTop;
     const toLocalY = (contentY: number): number => docTop + contentY - layerRect.top;
@@ -96,12 +93,67 @@ class TimeRulerLayer {
     const cRect = view.contentDOM.getBoundingClientRect();
     const rulerX = Math.max(2, cRect.left - layerRect.left);
 
-    for (const e of this.entries) {
-      if (e.markerLineNo + 1 > view.state.doc.lines) continue;
-      this.renderEntry(e, rulerX, toLocalY);
+    for (const r of this.rows) {
+      if (r.lineNo + 1 > view.state.doc.lines) continue;
+      this.renderRow(r, rulerX, toLocalY);
+    }
+    this.renderNow(rulerX, toLocalY, cRect.width);
+  }
+
+  /** Content-coordinate band [top, bottom] from this task line to the next block. */
+  private blockBand(lineNo: number): { top: number; bottom: number } {
+    const view = this.view;
+    const doc = view.state.doc;
+    const top = view.lineBlockAt(doc.line(lineNo + 1).from).bottom; // below the line
+    const next = this.boundaries.find((n) => n > lineNo);
+    const bottom =
+      next !== undefined
+        ? view.lineBlockAt(doc.line(next + 1).from).top
+        : view.lineBlockAt(doc.line(doc.lines).from).bottom;
+    return { top, bottom };
+  }
+
+  private renderRow(
+    r: TimelineRow,
+    rulerX: number,
+    toLocalY: (y: number) => number
+  ): void {
+    // Gap chip floated over the blank line above this task's line.
+    const gap = this.gaps.find((g) => g.endMin === r.startMin);
+    if (gap) {
+      const markerTop = this.view.lineBlockAt(
+        this.view.state.doc.line(r.lineNo + 1).from
+      ).top;
+      this.add('dt-ruler-gapchip', rulerX, toLocalY(markerTop), {
+        text: `Idle ${formatClock(gap.startMin)}–${formatClock(gap.endMin)}`,
+      });
     }
 
-    this.renderNow(rulerX, toLocalY, cRect.width);
+    const { top, bottom } = this.blockBand(r.lineNo);
+    const height = bottom - top;
+    if (height <= 2) return;
+
+    const activeMin = activeMinOf(r);
+    if (activeMin <= 0) return;
+    const pxPerMin = height / activeMin;
+    if (pxPerMin * 60 < MIN_HOUR_PX) return; // too cramped for the fine ruler
+
+    const line = this.add('dt-ruler-line', rulerX - 1, toLocalY(top), {});
+    line.style.height = `${height}px`;
+
+    let acc = 0;
+    r.segments.forEach((s, i) => {
+      if (i > 0 && s.startMin % 60 === 0) {
+        this.tick(toLocalY(top + acc * pxPerMin), rulerX, true, formatClock(s.startMin));
+      }
+      let b = Math.ceil((s.startMin + 1) / 30) * 30;
+      for (; b <= s.endMin; b += 30) {
+        const y = toLocalY(top + (acc + (b - s.startMin)) * pxPerMin);
+        const hour = b % 60 === 0;
+        this.tick(y, rulerX, hour, hour ? formatClock(b) : null);
+      }
+      acc += s.endMin - s.startMin;
+    });
   }
 
   /** A red line at the current clock time, on today's note only. */
@@ -114,84 +166,21 @@ class TimeRulerLayer {
     const now = new Date();
     const nowMin = now.getHours() * 60 + now.getMinutes();
 
-    for (const e of this.entries) {
-      if (e.endMin <= e.startMin) continue;
-      if (nowMin < e.startMin || nowMin >= e.endMin) continue;
-      const { top, bottom } = this.blockBand(e.markerLineNo);
-      const frac = (nowMin - e.startMin) / (e.endMin - e.startMin);
-      const line = this.add('dt-ruler-now', rulerX - TICK_HOUR_LEN, toLocalY(top + frac * (bottom - top)), {});
-      line.style.width = `${Math.max(40, width)}px`;
-      return;
-    }
-  }
-
-  /** Content-coordinate band [top, bottom] from this marker to the next. */
-  private blockBand(markerLineNo: number): { top: number; bottom: number } {
-    const view = this.view;
-    const doc = view.state.doc;
-    const markerLine = doc.line(markerLineNo + 1);
-    const top = view.lineBlockAt(markerLine.from).bottom; // axis starts below header
-
-    const next = this.markerLines.find((n) => n > markerLineNo);
-    const bottom =
-      next !== undefined
-        ? view.lineBlockAt(doc.line(next + 1).from).top
-        : view.lineBlockAt(doc.line(doc.lines).from).bottom;
-    return { top, bottom };
-  }
-
-  private renderEntry(
-    e: RulerEntry,
-    rulerX: number,
-    toLocalY: (y: number) => number
-  ): void {
-    // Display-only gap chip, floated over the blank line above this block's
-    // header — styled like a task header but living in the overlay, so it never
-    // touches the document or the cursor.
-    if (e.gapBefore) {
-      const markerTop = this.view.lineBlockAt(
-        this.view.state.doc.line(e.markerLineNo + 1).from
-      ).top;
-      this.add('dt-ruler-gapchip', rulerX, toLocalY(markerTop), {
-        text: `Idle ${formatClock(e.gapBefore.startMin)}–${formatClock(
-          e.gapBefore.endMin
-        )}`,
-      });
-    }
-
-    const { top, bottom } = this.blockBand(e.markerLineNo);
-    const height = bottom - top;
-    if (height <= 2) return;
-
-    if (e.activeMin <= 0) return;
-    const pxPerMin = height / e.activeMin;
-
-    // Start label anchors the axis top to the task's start time.
-    this.add('dt-ruler-label', rulerX - TICK_HOUR_LEN - 2, toLocalY(top), {
-      text: formatClock(e.startMin),
-    });
-
-    if (pxPerMin * 60 < MIN_HOUR_PX) return; // too cramped for the fine ruler
-
-    // Vertical guide line spanning the block.
-    const line = this.add('dt-ruler-line', rulerX - 1, toLocalY(top), {});
-    line.style.height = `${height}px`;
-
-    // Walk segments, mapping active minutes to pixels. The gap between segments
-    // (a fixed appointment) consumes no pixels, so labels jump.
-    let acc = 0;
-    e.segments.forEach((s, i) => {
-      if (i > 0 && s.startMin % 60 === 0) {
-        this.tick(toLocalY(top + acc * pxPerMin), rulerX, true, formatClock(s.startMin));
+    for (const r of this.rows) {
+      const activeMin = activeMinOf(r);
+      if (activeMin <= 0) continue;
+      const { top, bottom } = this.blockBand(r.lineNo);
+      let acc = 0;
+      for (const s of r.segments) {
+        if (nowMin >= s.startMin && nowMin < s.endMin) {
+          const y = toLocalY(top + ((acc + (nowMin - s.startMin)) / activeMin) * (bottom - top));
+          const el = this.add('dt-ruler-now', rulerX - TICK_HOUR_LEN, y, {});
+          el.style.width = `${Math.max(40, width)}px`;
+          return;
+        }
+        acc += s.endMin - s.startMin;
       }
-      let b = Math.ceil((s.startMin + 1) / 30) * 30;
-      for (; b <= s.endMin; b += 30) {
-        const y = toLocalY(top + (acc + (b - s.startMin)) * pxPerMin);
-        const hour = b % 60 === 0;
-        this.tick(y, rulerX, hour, hour ? formatClock(b) : null);
-      }
-      acc += s.endMin - s.startMin;
-    });
+    }
   }
 
   private tick(y: number, rulerX: number, hour: boolean, label: string | null): void {
@@ -230,6 +219,5 @@ export function timeRulerExtension(plugin: DynamicTimetable) {
     estimateDelimiter: plugin.settings.taskEstimateDelimiter,
     startTimeDelimiter: plugin.settings.startTimeDelimiter,
   });
-
   return ViewPlugin.define((view) => new TimeRulerLayer(view, opts));
 }

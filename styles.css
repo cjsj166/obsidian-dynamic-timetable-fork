@@ -161,9 +161,19 @@
   gap: 0.1em;
   font-size: 0.9em;
   padding: 1px 6px;
+  margin-right: 0.45em;
   border-left: 2px solid var(--interactive-accent);
   background-color: var(--background-secondary);
   border-radius: 0 4px 4px 0;
+}
+
+.dt-hdr-below {
+  border-left-color: var(--text-accent);
+  opacity: 0.85;
+}
+
+.dt-hdr-below .dt-hdr-time {
+  color: var(--text-muted);
 }
 
 .dt-hdr-time {

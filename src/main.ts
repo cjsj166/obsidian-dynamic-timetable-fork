@@ -1,11 +1,7 @@
-import { Plugin, WorkspaceLeaf, TFile, Notice, Editor } from 'obsidian';
-import { EditorView } from '@codemirror/view';
+import { Plugin, WorkspaceLeaf, TFile, Notice } from 'obsidian';
 import { runRollover } from './Rollover';
 import { timetableHeaderExtension } from './editor/headerExtension';
 import { timeRulerExtension } from './editor/timeRuler';
-import { autoTidyExtension, genBlockId } from './editor/autoTidy';
-import { applyMinimalChange } from './editor/writeback';
-import { tidyNotes } from './core/notes';
 import { TimetableView } from './TimetableView';
 import { DynamicTimetableSettingTab } from './Settings';
 import { taskFunctions } from './TaskManager';
@@ -91,7 +87,6 @@ export default class DynamicTimetable extends Plugin {
     this.registerEditorExtension([
       timetableHeaderExtension(this),
       timeRulerExtension(this),
-      autoTidyExtension(this),
     ]);
     await this.layoutReadyHandler();
   }
@@ -145,25 +140,6 @@ export default class DynamicTimetable extends Plugin {
       id: 'roll-over',
       name: 'Roll over incomplete tasks to today',
       callback: () => runRollover(this, true),
-    });
-
-    this.addCommand({
-      id: 'tidy-notes',
-      name: 'Tidy task notes (ids, markers, order)',
-      editorCallback: (editor: Editor) => {
-        const cur = editor.getValue();
-        const next = tidyNotes(cur, genBlockId, {
-          estimateDelimiter: this.settings.taskEstimateDelimiter,
-          startTimeDelimiter: this.settings.startTimeDelimiter,
-        }).content;
-        if (next === cur) return;
-        const cm = (editor as unknown as { cm?: EditorView }).cm;
-        if (cm) {
-          applyMinimalChange(cm, next);
-        } else {
-          editor.setValue(next);
-        }
-      },
     });
   }
 

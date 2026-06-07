@@ -9,64 +9,11 @@ import {
 import { Range } from '@codemirror/state';
 import { editorInfoField } from 'obsidian';
 import type DynamicTimetable from '../main';
-import { MarkerHeader, computeMarkerHeaders } from '../core/headers';
 import { ParseOptions } from '../core/types';
+import { TimelineRow, resolveTimeline } from '../core/timeline';
 import { todayISO } from '../core/date';
 
 const ISO_RE = /(\d{4}-\d{2}-\d{2})/;
-
-/** Render the task header at a `%%task:<id>%%` marker line. */
-class HeaderWidget extends WidgetType {
-  constructor(readonly h: MarkerHeader) {
-    super();
-  }
-
-  eq(other: HeaderWidget): boolean {
-    const a = this.h;
-    const b = other.h;
-    return (
-      a.id === b.id &&
-      a.name === b.name &&
-      a.timeLabel === b.timeLabel &&
-      a.status === b.status &&
-      a.fixed === b.fixed &&
-      a.splitCount === b.splitCount &&
-      a.orphan === b.orphan &&
-      a.parseError === b.parseError
-    );
-  }
-
-  toDOM(): HTMLElement {
-    const el = document.createElement('span');
-    el.className =
-      'dt-hdr' +
-      (this.h.orphan ? ' dt-hdr-orphan' : '') +
-      (this.h.status === 'done' ? ' dt-completed' : '') +
-      (this.h.parseError ? ' dt-parse-error' : '');
-
-    if (this.h.orphan) {
-      el.title = '매칭되는 태스크가 없는 메모입니다 (태스크가 삭제됐을 수 있음)';
-      el.createSpan({ cls: 'dt-hdr-time', text: '?' });
-      el.createSpan({ cls: 'dt-hdr-name', text: ' (orphan)' });
-      return el;
-    }
-
-    el.createSpan({ cls: 'dt-hdr-time', text: this.h.timeLabel });
-    if (this.h.fixed) {
-      el.createSpan({ cls: 'dt-pin', text: ' 📌' });
-    }
-    el.createSpan({ cls: 'dt-hdr-name', text: ` ${this.h.name ?? ''}` });
-    if (this.h.parseError) {
-      el.createSpan({ cls: 'dt-error-mark', text: ' ⚠' });
-      el.title = this.h.parseError;
-    }
-    return el;
-  }
-
-  ignoreEvent(): boolean {
-    return false;
-  }
-}
 
 function noteDateFor(view: EditorView): string {
   const info = view.state.field(editorInfoField, false) as
@@ -77,36 +24,67 @@ function noteDateFor(view: EditorView): string {
   return m ? m[1] : todayISO();
 }
 
-function buildDecorations(
-  view: EditorView,
-  opts: ParseOptions
-): DecorationSet {
-  const content = view.state.doc.toString();
-  const noteDate = noteDateFor(view);
-  const headers = computeMarkerHeaders(content, noteDate, opts);
-  const doc = view.state.doc;
-  const sel = view.state.selection;
-  const ranges: Range<Decoration>[] = [];
+/** Inline time chip prepended to a `- [ ]` task line (does not replace text). */
+class TimeWidget extends WidgetType {
+  constructor(readonly row: TimelineRow) {
+    super();
+  }
 
-  // Task header over each marker line.
-  for (const h of headers) {
-    const lineNo = h.markerLineNo + 1; // core is 0-based, CM is 1-based
-    if (lineNo < 1 || lineNo > doc.lines) continue;
-    const line = doc.line(lineNo);
-    // Reveal the raw marker for editing when the cursor is on its line.
-    const cursorOnLine = sel.ranges.some(
-      (r) => r.from <= line.to && r.to >= line.from
-    );
-    if (cursorOnLine) continue;
-    ranges.push(
-      Decoration.replace({ widget: new HeaderWidget(h) }).range(line.from, line.to)
+  eq(other: TimeWidget): boolean {
+    const a = this.row;
+    const b = other.row;
+    return (
+      a.timeLabel === b.timeLabel &&
+      a.kind === b.kind &&
+      a.fixed === b.fixed &&
+      a.conflict === b.conflict &&
+      a.status === b.status &&
+      a.parseError === b.parseError
     );
   }
 
+  toDOM(): HTMLElement {
+    const el = document.createElement('span');
+    el.className =
+      'dt-hdr' +
+      (this.row.kind === 'below' ? ' dt-hdr-below' : '') +
+      (this.row.conflict ? ' dt-conflict' : '') +
+      (this.row.status === 'done' ? ' dt-completed' : '') +
+      (this.row.parseError ? ' dt-parse-error' : '');
+    el.createSpan({ cls: 'dt-hdr-time', text: this.row.timeLabel });
+    if (this.row.fixed) {
+      el.createSpan({ cls: 'dt-pin', text: ' 📌' });
+    }
+    if (this.row.parseError) {
+      el.createSpan({ cls: 'dt-error-mark', text: ' ⚠' });
+      el.title = this.row.parseError;
+    }
+    return el;
+  }
+
+  ignoreEvent(): boolean {
+    return false;
+  }
+}
+
+function buildDecorations(view: EditorView, opts: ParseOptions): DecorationSet {
+  const { rows } = resolveTimeline(view.state.doc.toString(), noteDateFor(view), opts);
+  const doc = view.state.doc;
+  const ranges: Range<Decoration>[] = [];
+
+  for (const r of rows) {
+    if (!r.timeLabel) continue;
+    const lineNo = r.lineNo + 1; // core is 0-based, CM is 1-based
+    if (lineNo < 1 || lineNo > doc.lines) continue;
+    const line = doc.line(lineNo);
+    ranges.push(
+      Decoration.widget({ widget: new TimeWidget(r), side: -1 }).range(line.from)
+    );
+  }
   return Decoration.set(ranges, true);
 }
 
-/** Editor extension that renders a task header over each `%%task:<id>%%` line. */
+/** Editor extension that prepends a projected-time chip to each task line. */
 export function timetableHeaderExtension(plugin: DynamicTimetable) {
   const opts = (): ParseOptions => ({
     estimateDelimiter: plugin.settings.taskEstimateDelimiter,
@@ -122,7 +100,7 @@ export function timetableHeaderExtension(plugin: DynamicTimetable) {
       }
 
       update(u: ViewUpdate) {
-        if (u.docChanged || u.selectionSet || u.viewportChanged) {
+        if (u.docChanged || u.viewportChanged) {
           this.decorations = buildDecorations(u.view, opts());
         }
       }
