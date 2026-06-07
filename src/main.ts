@@ -3,6 +3,7 @@ import { runRollover } from './Rollover';
 import { timetableHeaderExtension } from './editor/headerExtension';
 import { timeRulerExtension } from './editor/timeRuler';
 import { autoLayoutExtension } from './editor/autoLayout';
+import { taskMoveKeymap } from './editor/moveTask';
 import { TimetableView } from './TimetableView';
 import { DynamicTimetableSettingTab } from './Settings';
 import { taskFunctions } from './TaskManager';
@@ -86,6 +87,7 @@ export default class DynamicTimetable extends Plugin {
     this.initCommands();
     this.registerViews();
     this.registerEditorExtension([
+      taskMoveKeymap(this),
       timetableHeaderExtension(this),
       timeRulerExtension(this),
       autoLayoutExtension(this),
