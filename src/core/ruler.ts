@@ -1,13 +1,13 @@
 // Pure data for the left time ruler drawn beside each today note block.
 //
-// Each today task gets a *local* time axis: its memo's pixel height represents
-// the task's active duration, with hour labels / 30-min ticks down the side.
-// This module computes the per-task segment list + active minutes + any idle
-// gap that immediately precedes the task; the CM6 layer maps it onto pixels.
+// Under the per-segment model each today block is a single contiguous segment,
+// so its axis is a plain linear map from the segment's minutes to the memo's
+// pixel height (hour labels / 30-min ticks). An idle gap that ends exactly at a
+// block's start is attached for display.
 
-import { DEFAULT_PARSE_OPTIONS, ParseOptions, TaskLine } from './types';
-import { analyzeNotes } from './notes';
-import { GapSpan, capacityFor, projectToday } from './projection';
+import { DEFAULT_PARSE_OPTIONS, ParseOptions } from './types';
+import { GapSpan } from './projection';
+import { resolveBlocks } from './blocks';
 
 export interface RulerSegment {
   startMin: number;
@@ -16,61 +16,37 @@ export interface RulerSegment {
 
 export interface RulerEntry {
   id: string;
-  /** Absolute line index of this task's `%%task:<id>%%` marker. */
+  /** Absolute line index of this block's `%%task:<id>%%` marker. */
   markerLineNo: number;
-  /** First segment start (minutes-of-day). */
   startMin: number;
-  /** Last segment end (minutes-of-day). */
   endMin: number;
-  /** Sum of segment durations — what the memo height is scaled to. */
+  /** Minutes this block represents — what the memo height is scaled to. */
   activeMin: number;
-  /** Working spans, in time order (more than one when split). */
+  /** Always a single span under the per-segment model (kept as a list). */
   segments: RulerSegment[];
-  /** An idle gap ending exactly at this task's start, if any (display-only). */
+  /** An idle gap ending exactly at this block's start, if any (display-only). */
   gapBefore: GapSpan | null;
 }
 
-/** Per-today-task ruler data, in marker (document) order. */
+/** Per-today-block ruler data, in document order. */
 export function computeRuler(
   content: string,
   noteDate: string,
   opts: ParseOptions = DEFAULT_PARSE_OPTIONS
 ): RulerEntry[] {
-  const a = analyzeNotes(content, opts);
-  const fm = a.doc.frontmatter;
-  const proj = projectToday(a.doc.today, fm.dayStartMin, capacityFor(fm, noteDate));
-
-  const byTask = new Map<TaskLine, RulerSegment[]>();
-  for (const r of proj.rows) {
-    const segs = byTask.get(r.task) ?? [];
-    segs.push({ startMin: r.startMin, endMin: r.endMin });
-    byTask.set(r.task, segs);
-  }
-  for (const segs of byTask.values()) {
-    segs.sort((x, y) => x.startMin - y.startMin);
-  }
-
-  const todaySet = new Set(a.doc.today);
+  const { blocks, gaps } = resolveBlocks(content, noteDate, opts);
   const entries: RulerEntry[] = [];
-  for (const seg of a.segments) {
-    const task = a.tasks.find((t) => t.id === seg.id) ?? null;
-    if (!task || !todaySet.has(task)) continue;
-    const segments = byTask.get(task);
-    if (!segments || segments.length === 0) continue;
 
-    const startMin = segments[0].startMin;
-    const endMin = segments[segments.length - 1].endMin;
-    const activeMin = segments.reduce((s, x) => s + (x.endMin - x.startMin), 0);
-    const gapBefore = proj.gaps.find((g) => g.endMin === startMin) ?? null;
-
+  for (const b of blocks) {
+    if (b.kind !== 'today' || b.startMin === null || b.endMin === null) continue;
     entries.push({
-      id: seg.id,
-      markerLineNo: seg.markerLineNo,
-      startMin,
-      endMin,
-      activeMin,
-      segments,
-      gapBefore,
+      id: b.id,
+      markerLineNo: b.markerLineNo,
+      startMin: b.startMin,
+      endMin: b.endMin,
+      activeMin: b.endMin - b.startMin,
+      segments: [{ startMin: b.startMin, endMin: b.endMin }],
+      gapBefore: gaps.find((g) => g.endMin === b.startMin) ?? null,
     });
   }
   return entries;

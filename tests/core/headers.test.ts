@@ -39,10 +39,11 @@ describe('computeMarkerHeaders', () => {
     expect(byId.t1.fixed).toBe(true);
   });
 
-  it('shows each segment range for a task split around a fixed appointment', () => {
+  it('labels a split task block with its own segment, reporting the split count', () => {
     // 긴 작업 (4h) fills 09:00–11:00, then 12:00–14:00 around the 11:00 meeting.
+    // With a single marker present, this block represents the first segment.
     expect(byId.t2.section).toBe('today');
-    expect(byId.t2.timeLabel).toBe('09:00–11:00, 12:00–14:00');
+    expect(byId.t2.timeLabel).toBe('09:00–11:00');
     expect(byId.t2.splitCount).toBe(2);
   });
 

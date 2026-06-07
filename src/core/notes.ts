@@ -203,86 +203,98 @@ export function assignIds(
 }
 
 /**
- * Append an empty `%%task:<id>%%` marker block for each task whose id has no
- * marker yet. Orphan markers (id with no task) are reported, never deleted.
+ * Rebuild the notes region to the per-segment model: one `%%task:<id>%%` block
+ * per today timeline segment (a split task owns several blocks with duplicate
+ * markers), then one block per below task, then orphan markers. Blocks are
+ * ordered by projected start time so the notes read chronologically.
+ *
+ * Bodies are preserved and *reconciled* to the segment count: when a task gains
+ * a segment an empty block is appended; when it loses one the surplus block
+ * bodies are merged into the last kept block (no memo is dropped). Orphan
+ * markers (id with no task) are kept, reported, never deleted. Idempotent.
  */
-export function syncMarkers(
+export function reconcileNotes(
   content: string,
   opts: ParseOptions = DEFAULT_PARSE_OPTIONS
 ): { content: string; orphans: NoteSegment[] } {
-  const a = analyzeNotes(content, opts);
-  const have = new Set(a.segments.map((s) => s.id));
-  const missing = a.tasks
-    .map((t) => t.id)
-    .filter((id): id is string => !!id && !have.has(id));
-
-  if (missing.length === 0) {
-    return { content, orphans: a.orphanSegments };
-  }
-  const base = content.replace(/\s+$/, '');
-  const additions = missing.map((id) => `${markerLine(id)}\n`).join('\n');
-  return { content: `${base}\n\n${additions}`, orphans: a.orphanSegments };
-}
-
-/**
- * Rebuild the notes region so the marker blocks follow the actual timeline:
- * today tasks sorted by projected start time, then below tasks in document
- * order. Orphan markers are kept, appended after, in original order.
- * Idempotent. No-op when there are no markers.
- */
-export function reorderMarkersToTasks(
-  content: string,
-  opts: ParseOptions = DEFAULT_PARSE_OPTIONS
-): string {
   const lines = content.split('\n');
   const first = findFirstMarkerLine(lines);
-  if (first === null) return content;
-
   const a = analyzeNotes(content, opts);
   const fm = a.doc.frontmatter;
-
-  // Earliest projected start per today task (capacity doesn't affect starts).
+  // Segment structure is capacity-independent, so any capacity works here.
   const proj = projectToday(a.doc.today, fm.dayStartMin, fm.workingHoursMin);
-  const startByTask = new Map<TaskLine, number>();
-  for (const r of proj.rows) {
-    const cur = startByTask.get(r.task);
-    startByTask.set(r.task, cur === undefined ? r.startMin : Math.min(cur, r.startMin));
-  }
-  const todaySorted = [...a.doc.today].sort(
-    (x, y) => (startByTask.get(x) ?? 0) - (startByTask.get(y) ?? 0)
-  );
-  const orderTasks = [...todaySorted, ...a.doc.below];
 
-  const byId = new Map(a.segments.map((s) => [s.id, s]));
-  const ordered: NoteSegment[] = [];
-  const taken = new Set<string>();
-  for (const t of orderTasks) {
-    if (t.id && byId.has(t.id) && !taken.has(t.id)) {
-      ordered.push(byId.get(t.id)!);
-      taken.add(t.id);
-    }
-  }
+  // Existing block bodies per id, in document order.
+  const bodiesById = new Map<string, string[]>();
   for (const s of a.segments) {
-    if (!taken.has(s.id)) {
-      ordered.push(s); // orphan or duplicate — preserve
-      taken.add(s.id);
-    }
+    const arr = bodiesById.get(s.id) ?? [];
+    arr.push(s.text);
+    bodiesById.set(s.id, arr);
   }
 
-  const prefix = lines.slice(0, first).join('\n').replace(/\s+$/, '');
-  const blocks = ordered.map((s) =>
-    `${markerLine(s.id)}\n${s.text}`.replace(/\s+$/, '')
+  // Desired block count per id: today = segment count, below = 1.
+  const desired = new Map<string, number>();
+  for (const r of proj.rows) {
+    if (r.task.id) desired.set(r.task.id, (desired.get(r.task.id) ?? 0) + 1);
+  }
+  for (const t of a.doc.below) {
+    if (t.id) desired.set(t.id, 1);
+  }
+
+  const fitted = new Map<string, string[]>();
+  for (const [id, n] of desired) {
+    fitted.set(id, fitBodies(bodiesById.get(id) ?? [], n));
+  }
+
+  const out: { id: string; text: string }[] = [];
+  const ptr = new Map<string, number>();
+  const pop = (id: string): string => {
+    const i = ptr.get(id) ?? 0;
+    ptr.set(id, i + 1);
+    return fitted.get(id)?.[i] ?? '';
+  };
+  for (const r of proj.rows) {
+    if (r.task.id) out.push({ id: r.task.id, text: pop(r.task.id) });
+  }
+  for (const t of a.doc.below) {
+    if (t.id) out.push({ id: t.id, text: pop(t.id) });
+  }
+
+  const taskIds = new Set(
+    [...a.doc.today, ...a.doc.below].map((t) => t.id).filter(Boolean) as string[]
   );
-  return `${prefix}\n\n${blocks.join('\n\n')}\n`;
+  const orphans = a.segments.filter((s) => !taskIds.has(s.id));
+  for (const s of orphans) out.push({ id: s.id, text: s.text });
+
+  if (out.length === 0) return { content, orphans };
+
+  const prefix = (
+    first === null ? content : lines.slice(0, first).join('\n')
+  ).replace(/\s+$/, '');
+  const blocks = out.map((b) => `${markerLine(b.id)}\n${b.text}`.replace(/\s+$/, ''));
+  return { content: `${prefix}\n\n${blocks.join('\n\n')}\n`, orphans };
 }
 
-/** Convenience: assign ids, create missing markers, and reorder to task order. */
+/** Reconcile existing bodies to exactly `n` blocks (see reconcileNotes). */
+function fitBodies(bodies: string[], n: number): string[] {
+  if (n <= 0) return [];
+  if (bodies.length === n) return bodies.slice();
+  if (bodies.length < n) {
+    const out = bodies.slice();
+    while (out.length < n) out.push('');
+    return out;
+  }
+  const kept = bodies.slice(0, n);
+  const merged = [kept[n - 1], ...bodies.slice(n)].filter((s) => s.trim() !== '');
+  kept[n - 1] = merged.join('\n\n');
+  return kept;
+}
+
+/** Convenience: assign ids, then reconcile blocks to the timeline. */
 export function tidyNotes(
   content: string,
   idgen: () => string,
   opts: ParseOptions = DEFAULT_PARSE_OPTIONS
 ): { content: string; orphans: NoteSegment[] } {
-  const withIds = assignIds(content, idgen, opts);
-  const synced = syncMarkers(withIds, opts);
-  return { content: reorderMarkersToTasks(synced.content, opts), orphans: synced.orphans };
+  return reconcileNotes(assignIds(content, idgen, opts), opts);
 }

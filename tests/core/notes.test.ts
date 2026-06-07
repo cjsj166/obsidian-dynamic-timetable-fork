@@ -5,8 +5,7 @@ import {
   matchTaskNotes,
   parseNoteSegments,
   parseTaskRegion,
-  reorderMarkersToTasks,
-  syncMarkers,
+  reconcileNotes,
   tidyNotes,
 } from '../../src/core/notes';
 import { parseTaskLine } from '../../src/core/document';
@@ -160,50 +159,54 @@ describe('assignIds', () => {
   });
 });
 
-describe('syncMarkers', () => {
-  it('creates a marker block for each task id without one', () => {
-    const content = ['- [ ] a ^x', '- [ ] b ^y'].join('\n');
-    const { content: out, orphans } = syncMarkers(content);
-    expect(out).toContain('%%task:x%%');
-    expect(out).toContain('%%task:y%%');
-    expect(orphans).toHaveLength(0);
-    // re-analyzing pairs both tasks to a segment
-    const a = analyzeNotes(out);
-    expect(a.unassignedTasks).toHaveLength(0);
-  });
-
-  it('reports orphan markers and leaves them in place', () => {
-    const content = ['- [ ] a ^x', '%%task:x%%', 'note', '%%task:gone%%', 'leftover'].join('\n');
-    const { content: out, orphans } = syncMarkers(content);
-    expect(orphans.map((o) => o.id)).toEqual(['gone']);
-    expect(out).toContain('%%task:gone%%');
-    expect(out).toContain('leftover');
-  });
-
-  it('is a no-op when every id already has a marker', () => {
-    const content = ['- [ ] a ^x', '%%task:x%%', 'note'].join('\n');
-    expect(syncMarkers(content).content).toBe(content);
-  });
-});
-
-describe('reorderMarkersToTasks', () => {
-  it('reorders marker blocks to match task order', () => {
+describe('reconcileNotes', () => {
+  it('creates one block per task id, ordered by projected start', () => {
     const content = [
-      '- [ ] first ^a',
-      '- [ ] second ^b',
-      '%%task:b%%',
-      'B body',
-      '%%task:a%%',
-      'A body',
+      '- [ ] 미팅 @ 15:00 ; 1:00 ^late',
+      '- [ ] 아침 @ 9:00 ; 1:00 ^early',
     ].join('\n');
-    const out = reorderMarkersToTasks(content);
+    const { content: out, orphans } = reconcileNotes(content);
     const segs = parseNoteSegments(out.split('\n'));
-    expect(segs.map((s) => s.id)).toEqual(['a', 'b']);
-    expect(segs[0].text).toBe('A body');
-    expect(segs[1].text).toBe('B body');
+    expect(segs.map((s) => s.id)).toEqual(['early', 'late']);
+    expect(orphans).toHaveLength(0);
   });
 
-  it('keeps orphan markers, appended after task-ordered ones', () => {
+  it('splits a task into one block per segment, interleaved by time', () => {
+    const content = [
+      '---',
+      'working_hours: 7:00',
+      'day_start: 9:00',
+      '---',
+      '- [ ] 긴 작업 ; 4:00 ^a', // 09:00–11:00 + 12:00–14:00
+      '- [ ] 미팅 @ 11:00 ; 1:00 ^b', // 11:00–12:00
+      '%%task:a%%',
+      'memo a',
+      '%%task:b%%',
+      'memo b',
+    ].join('\n');
+    const segs = parseNoteSegments(reconcileNotes(content).content.split('\n'));
+    expect(segs.map((s) => s.id)).toEqual(['a', 'b', 'a']);
+    expect(segs[0].text).toBe('memo a'); // first segment keeps the existing body
+    expect(segs[2].text).toBe(''); // the new second-segment block starts empty
+  });
+
+  it('merges surplus blocks when a split collapses (no memo dropped)', () => {
+    const content = [
+      '---',
+      'day_start: 9:00',
+      '---',
+      '- [ ] 긴 작업 ; 4:00 ^a', // no appointment now — not split
+      '%%task:a%%',
+      'morning',
+      '%%task:a%%',
+      'afternoon',
+    ].join('\n');
+    const segs = parseNoteSegments(reconcileNotes(content).content.split('\n'));
+    expect(segs.map((s) => s.id)).toEqual(['a']);
+    expect(segs[0].text).toBe('morning\n\nafternoon');
+  });
+
+  it('keeps orphan markers, appended after task blocks', () => {
     const content = [
       '- [ ] only ^a',
       '%%task:gone%%',
@@ -211,20 +214,32 @@ describe('reorderMarkersToTasks', () => {
       '%%task:a%%',
       'A body',
     ].join('\n');
-    const out = reorderMarkersToTasks(content);
+    const { content: out, orphans } = reconcileNotes(content);
     const segs = parseNoteSegments(out.split('\n'));
     expect(segs.map((s) => s.id)).toEqual(['a', 'gone']);
+    expect(orphans.map((o) => o.id)).toEqual(['gone']);
   });
 
   it('is idempotent', () => {
-    const content = ['- [ ] a ^a', '- [ ] b ^b', '%%task:b%%', 'B', '%%task:a%%', 'A'].join('\n');
-    const once = reorderMarkersToTasks(content);
-    expect(reorderMarkersToTasks(once)).toBe(once);
+    const content = [
+      '---',
+      'working_hours: 7:00',
+      'day_start: 9:00',
+      '---',
+      '- [ ] 긴 작업 ; 4:00 ^a',
+      '- [ ] 미팅 @ 11:00 ; 1:00 ^b',
+      '%%task:b%%',
+      'B',
+      '%%task:a%%',
+      'A',
+    ].join('\n');
+    const once = reconcileNotes(content).content;
+    expect(reconcileNotes(once).content).toBe(once);
   });
 });
 
 describe('tidyNotes', () => {
-  it('assigns ids, creates markers, and orders them in one pass', () => {
+  it('assigns ids and reconciles blocks in one pass', () => {
     const seq = (() => {
       let n = 0;
       return () => `g${++n}`;
@@ -235,40 +250,6 @@ describe('tidyNotes', () => {
     expect(a.unassignedTasks).toHaveLength(0);
     expect(a.pairs.map((p) => p.task.name)).toEqual(['first', 'second']);
     expect(a.segments).toHaveLength(2);
-    // ids on tasks line up with markers in order
     expect(a.pairs.map((p) => p.task.id)).toEqual(a.segments.map((s) => s.id));
-  });
-});
-
-describe('reorderMarkersToTasks — by start time', () => {
-  it('orders markers by projected start time, not document order', () => {
-    const content = [
-      '- [ ] 미팅 @ 15:00 ; 1:00 ^late',
-      '- [ ] 아침 @ 9:00 ; 1:00 ^early',
-      '%%task:late%%',
-      'L',
-      '%%task:early%%',
-      'E',
-    ].join('\n');
-    const out = reorderMarkersToTasks(content);
-    const segs = parseNoteSegments(out.split('\n'));
-    expect(segs.map((s) => s.id)).toEqual(['early', 'late']);
-  });
-
-  it('places a late-starting flexible task after an earlier fixed one', () => {
-    const content = [
-      '- [ ] 긴 작업 ; 3:00 ^a', // fills 09:00–12:00
-      '- [ ] 점심 @ 12:00 ; 1:00 ^b', // 12:00
-      '- [ ] 마무리 ; 1:00 ^c', // fills 13:00
-      '%%task:c%%',
-      'C',
-      '%%task:b%%',
-      'B',
-      '%%task:a%%',
-      'A',
-    ].join('\n');
-    const out = reorderMarkersToTasks(content);
-    const segs = parseNoteSegments(out.split('\n'));
-    expect(segs.map((s) => s.id)).toEqual(['a', 'b', 'c']);
   });
 });
