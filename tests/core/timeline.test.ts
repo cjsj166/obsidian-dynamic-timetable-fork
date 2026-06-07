@@ -45,6 +45,20 @@ describe('resolveTimeline', () => {
     expect(boundaries.length).toBe(2);
   });
 
+  it('flags only tasks with a time condition, and labels a 0-min task as one time', () => {
+    const content = [
+      '---',
+      'day_start: 9:00',
+      '---',
+      '- [ ] 출근 @ 9:00', // anchor, no duration → single-time label
+      '- [ ] 그냥 할 일', // no @ or ; → not a render target
+    ].join('\n');
+    const { rows } = resolveTimeline(content, '2026-06-02');
+    expect(byName(rows, '출근').hasTime).toBe(true);
+    expect(byName(rows, '출근').timeLabel).toBe('09:00');
+    expect(byName(rows, '그냥 할 일').hasTime).toBe(false);
+  });
+
   it('labels below tasks with date and projected clock range', () => {
     const content = [
       '---',

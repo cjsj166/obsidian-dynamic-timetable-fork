@@ -15,6 +15,37 @@ import { todayISO } from '../core/date';
 
 const ISO_RE = /(\d{4}-\d{2}-\d{2})/;
 
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Character ranges of the `@…` and `;…` time tokens within a task line, so the
+ * editor can collapse them (the rendered chip already shows the time). Leading
+ * whitespace is included so no stray gap is left behind.
+ */
+function timeTokenRanges(
+  text: string,
+  base: number,
+  opts: ParseOptions
+): [number, number][] {
+  const st = escapeRegex(opts.startTimeDelimiter);
+  const sep = escapeRegex(opts.estimateDelimiter);
+  const atRe = new RegExp(
+    `\\s*${st}\\s*(?:\\d{4}-\\d{2}-\\d{2}[ T]\\d{1,2}:?\\d{2}|\\d{1,2}:?\\d{2})`,
+    'g'
+  );
+  const durRe = new RegExp(`\\s*${sep}\\s*\\S+`, 'g');
+  const out: [number, number][] = [];
+  for (const re of [atRe, durRe]) {
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(text)) !== null) {
+      out.push([base + m.index, base + m.index + m[0].length]);
+    }
+  }
+  return out;
+}
+
 function noteDateFor(view: EditorView): string {
   const info = view.state.field(editorInfoField, false) as
     | { file?: { basename?: string } | null }
@@ -70,16 +101,30 @@ class TimeWidget extends WidgetType {
 function buildDecorations(view: EditorView, opts: ParseOptions): DecorationSet {
   const { rows } = resolveTimeline(view.state.doc.toString(), noteDateFor(view), opts);
   const doc = view.state.doc;
+  const sel = view.state.selection;
   const ranges: Range<Decoration>[] = [];
 
   for (const r of rows) {
-    if (!r.timeLabel) continue;
+    if (!r.hasTime || !r.timeLabel) continue; // only tasks with a time condition
     const lineNo = r.lineNo + 1; // core is 0-based, CM is 1-based
     if (lineNo < 1 || lineNo > doc.lines) continue;
     const line = doc.line(lineNo);
+
+    // Time chip, prepended to the line.
     ranges.push(
       Decoration.widget({ widget: new TimeWidget(r), side: -1 }).range(line.from)
     );
+
+    // Hide the raw `@…`/`;…` tokens — but reveal them when the cursor is on
+    // this line so the source stays editable.
+    const cursorOnLine = sel.ranges.some(
+      (rg) => rg.from <= line.to && rg.to >= line.from
+    );
+    if (!cursorOnLine) {
+      for (const [from, to] of timeTokenRanges(line.text, line.from, opts)) {
+        if (to > from) ranges.push(Decoration.replace({}).range(from, to));
+      }
+    }
   }
   return Decoration.set(ranges, true);
 }
@@ -100,7 +145,7 @@ export function timetableHeaderExtension(plugin: DynamicTimetable) {
       }
 
       update(u: ViewUpdate) {
-        if (u.docChanged || u.viewportChanged) {
+        if (u.docChanged || u.selectionSet || u.viewportChanged) {
           this.decorations = buildDecorations(u.view, opts());
         }
       }

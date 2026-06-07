@@ -263,7 +263,16 @@
   height: 2px;
   background-color: var(--color-red, #e5534b);
   transform: translateY(-50%);
-  opacity: 0.85;
+}
+
+.dt-ruler-nowlabel {
+  position: absolute;
+  font-size: 0.7em;
+  line-height: 1;
+  font-weight: 700;
+  color: var(--color-red, #e5534b);
+  transform: translate(-100%, -50%);
+  white-space: nowrap;
 }
 
 .dt-ruler-gapchip {

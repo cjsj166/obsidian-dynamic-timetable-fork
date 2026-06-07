@@ -25,6 +25,16 @@ export interface TimelineSegment {
   endMin: number;
 }
 
+/** A task is a render target once it has a time condition (`@`/`;`), valid or not. */
+function hasTimeCondition(t: TaskLine): boolean {
+  return (
+    t.anchorMinutes !== null ||
+    t.anchorDate !== null ||
+    t.durationMin !== null ||
+    t.parseError !== null
+  );
+}
+
 export interface TimelineRow {
   /** Absolute 0-based line index of the `- [ ]` task line. */
   lineNo: number;
@@ -35,6 +45,8 @@ export interface TimelineRow {
   fixed: boolean;
   conflict: boolean;
   parseError: string | null;
+  /** True once the task carries a time condition (`@` or `;`); a render target. */
+  hasTime: boolean;
   /** e.g. "09:00–11:00, 12:00–14:00" (today) · "→ Mon 6/8 11:00–14:00" (below). */
   timeLabel: string;
   // today only
@@ -82,7 +94,11 @@ export function resolveTimeline(
     const segs = segsByTask.get(t) ?? [];
     const segments = segs.map((s) => ({ startMin: s.startMin, endMin: s.endMin }));
     const timeLabel = segments
-      .map((s) => `${formatClock(s.startMin)}–${formatClock(s.endMin)}`)
+      .map((s) =>
+        s.startMin === s.endMin
+          ? formatClock(s.startMin)
+          : `${formatClock(s.startMin)}–${formatClock(s.endMin)}`
+      )
       .join(', ');
     rows.push({
       lineNo: t.lineNo,
@@ -92,6 +108,7 @@ export function resolveTimeline(
       fixed: segs.some((s) => s.fixed),
       conflict: segs.some((s) => s.conflict),
       parseError: t.parseError,
+      hasTime: hasTimeCondition(t),
       timeLabel,
       startMin: segments.length ? segments[0].startMin : null,
       endMin: segments.length ? segments[segments.length - 1].endMin : null,
@@ -130,6 +147,7 @@ export function resolveTimeline(
       fixed: r ? r.pinned : false,
       conflict: false,
       parseError: t.parseError,
+      hasTime: hasTimeCondition(t),
       timeLabel,
       startMin: null,
       endMin: null,

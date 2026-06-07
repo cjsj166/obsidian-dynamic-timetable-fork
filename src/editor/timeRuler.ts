@@ -97,7 +97,7 @@ class TimeRulerLayer {
       if (r.lineNo + 1 > view.state.doc.lines) continue;
       this.renderRow(r, rulerX, toLocalY);
     }
-    this.renderNow(rulerX, toLocalY, cRect.width);
+    this.renderNow(rulerX, toLocalY);
   }
 
   /** Content-coordinate band [top, bottom] from this task line to the next block. */
@@ -156,31 +156,45 @@ class TimeRulerLayer {
     });
   }
 
-  /** A red line at the current clock time, on today's note only. */
-  private renderNow(
-    rulerX: number,
-    toLocalY: (y: number) => number,
-    width: number
-  ): void {
-    if (noteDateFor(this.view) !== todayISO()) return;
+  /**
+   * A short red tick + "now" label at the current clock time, on today's note
+   * only. When now falls in an idle gap (no segment), it snaps to the top of the
+   * upcoming block (or the bottom of the last block when the day is over) so it
+   * is always shown. Stays in the ruler margin — it does not cross the memo.
+   */
+  private renderNow(rulerX: number, toLocalY: (y: number) => number): void {
+    if (noteDateFor(this.view) !== todayISO() || this.rows.length === 0) return;
     const now = new Date();
     const nowMin = now.getHours() * 60 + now.getMinutes();
 
-    for (const r of this.rows) {
+    const sorted = [...this.rows].sort((a, b) => (a.startMin ?? 0) - (b.startMin ?? 0));
+    let y: number | null = null;
+
+    for (const r of sorted) {
       const activeMin = activeMinOf(r);
       if (activeMin <= 0) continue;
       const { top, bottom } = this.blockBand(r.lineNo);
       let acc = 0;
       for (const s of r.segments) {
         if (nowMin >= s.startMin && nowMin < s.endMin) {
-          const y = toLocalY(top + ((acc + (nowMin - s.startMin)) / activeMin) * (bottom - top));
-          const el = this.add('dt-ruler-now', rulerX - TICK_HOUR_LEN, y, {});
-          el.style.width = `${Math.max(40, width)}px`;
-          return;
+          y = toLocalY(top + ((acc + (nowMin - s.startMin)) / activeMin) * (bottom - top));
+          break;
         }
         acc += s.endMin - s.startMin;
       }
+      if (y !== null) break;
     }
+
+    if (y === null) {
+      const upcoming = sorted.find((r) => (r.startMin ?? Infinity) > nowMin);
+      const target = upcoming ?? sorted[sorted.length - 1];
+      const band = this.blockBand(target.lineNo);
+      y = toLocalY(upcoming ? band.top : band.bottom);
+    }
+
+    const tick = this.add('dt-ruler-now', rulerX - (TICK_HOUR_LEN + 2), y, {});
+    tick.style.width = `${TICK_HOUR_LEN + 2}px`;
+    this.add('dt-ruler-nowlabel', rulerX - (TICK_HOUR_LEN + 4), y, { text: 'now' });
   }
 
   private tick(y: number, rulerX: number, hour: boolean, label: string | null): void {
