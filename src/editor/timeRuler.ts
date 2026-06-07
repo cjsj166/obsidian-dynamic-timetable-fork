@@ -118,6 +118,20 @@ class TimeRulerLayer {
     rulerX: number,
     toLocalY: (y: number) => number
   ): void {
+    // Display-only gap chip, floated over the blank line above this block's
+    // header — styled like a task header but living in the overlay, so it never
+    // touches the document or the cursor.
+    if (e.gapBefore) {
+      const markerTop = this.view.lineBlockAt(
+        this.view.state.doc.line(e.markerLineNo + 1).from
+      ).top;
+      this.add('dt-ruler-gapchip', rulerX, toLocalY(markerTop), {
+        text: `공백시간 ${formatClock(e.gapBefore.startMin)}–${formatClock(
+          e.gapBefore.endMin
+        )}`,
+      });
+    }
+
     const { top, bottom } = this.blockBand(e.markerLineNo);
     const height = bottom - top;
     if (height <= 2) return;

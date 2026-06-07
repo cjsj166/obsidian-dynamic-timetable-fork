@@ -248,6 +248,16 @@
   transform: translate(-100%, -50%);
 }
 
-.dt-ruler-spacer {
-  pointer-events: none;
+.dt-ruler-gapchip {
+  position: absolute;
+  transform: translateY(-100%);
+  font-size: 0.8em;
+  line-height: 1.4;
+  padding: 0 6px;
+  border-left: 2px dashed var(--text-faint);
+  border-radius: 0 4px 4px 0;
+  color: var(--text-muted);
+  background-color: var(--background-secondary);
+  white-space: nowrap;
+  opacity: 0.85;
 }
