@@ -66,8 +66,25 @@ function move(view: EditorView, dir: 'up' | 'down', opts: ParseOptions): boolean
   // Cursor must be in the task's own primary block, not a continuation below it.
   if (cur >= nextBlockStart(lines, today[ci].lineNo + 1, regionTo)) return false;
 
-  const target = dir === 'up' ? ci - 1 : ci + 1;
-  if (target < 0 || target >= today.length) return false;
+  // Only flexible tasks can be reprioritized — a fixed `@`-time task is anchored,
+  // and swapping past a fixed task changes nothing. So step to the adjacent
+  // FLEXIBLE task, skipping fixed ones.
+  if (today[ci].anchorMinutes !== null) return true;
+  let target = -1;
+  if (dir === 'up') {
+    for (let k = ci - 1; k >= 0; k--)
+      if (today[k].anchorMinutes === null) {
+        target = k;
+        break;
+      }
+  } else {
+    for (let k = ci + 1; k < today.length; k++)
+      if (today[k].anchorMinutes === null) {
+        target = k;
+        break;
+      }
+  }
+  if (target < 0) return true;
 
   const range = (k: number) => {
     const start = today[k].lineNo;
