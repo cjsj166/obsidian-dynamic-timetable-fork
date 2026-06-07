@@ -23,6 +23,36 @@ export interface MarkerHeader {
   parseError: string | null;
 }
 
+export interface GapHeader {
+  /** Marker line of the today block that immediately follows this gap. */
+  beforeMarkerLineNo: number;
+  /** e.g. "공백시간 11:00–14:00". */
+  label: string;
+}
+
+/**
+ * A display-only header for each idle gap, anchored just above the today block
+ * whose segment starts where the gap ends. Holds no marker/note of its own.
+ */
+export function computeGapHeaders(
+  content: string,
+  noteDate: string,
+  opts: ParseOptions = DEFAULT_PARSE_OPTIONS
+): GapHeader[] {
+  const { blocks, gaps } = resolveBlocks(content, noteDate, opts);
+  const out: GapHeader[] = [];
+  for (const g of gaps) {
+    const b = blocks.find((bl) => bl.kind === 'today' && bl.startMin === g.endMin);
+    if (b) {
+      out.push({
+        beforeMarkerLineNo: b.markerLineNo,
+        label: `공백시간 ${formatClock(g.startMin)}–${formatClock(g.endMin)}`,
+      });
+    }
+  }
+  return out;
+}
+
 /** Header data for every `%%task:<id>%%` marker, in document order. */
 export function computeMarkerHeaders(
   content: string,

@@ -181,6 +181,24 @@
   color: var(--text-muted);
 }
 
+/* Display-only gap header (idle time between tasks) ------------------------ */
+
+.dt-hdr-gapline {
+  margin: 2px 0;
+}
+
+.dt-hdr-gap {
+  border-left-style: dashed;
+  border-left-color: var(--text-faint);
+  background-color: transparent;
+  opacity: 0.8;
+}
+
+.dt-hdr-gap .dt-hdr-time {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
 /* Left time ruler (per-today-task local axis beside the memo) -------------- */
 
 .dt-ruler-layer {

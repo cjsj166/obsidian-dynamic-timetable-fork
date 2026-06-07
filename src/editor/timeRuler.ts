@@ -124,14 +124,6 @@ class TimeRulerLayer {
     const height = bottom - top;
     if (height <= 2) return;
 
-    if (e.gapBefore) {
-      this.add('dt-ruler-gap', rulerX, toLocalY(top), {
-        text: `공백 ${formatClock(e.gapBefore.startMin)}–${formatClock(
-          e.gapBefore.endMin
-        )}`,
-      });
-    }
-
     if (e.activeMin <= 0) return;
     const pxPerMin = height / e.activeMin;
 
