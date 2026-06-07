@@ -2,7 +2,7 @@ import { Plugin, WorkspaceLeaf, TFile, Notice } from 'obsidian';
 import { runRollover } from './Rollover';
 import { timetableHeaderExtension } from './editor/headerExtension';
 import { timeRulerExtension } from './editor/timeRuler';
-import { autoSortExtension } from './editor/autoSort';
+import { autoLayoutExtension } from './editor/autoLayout';
 import { TimetableView } from './TimetableView';
 import { DynamicTimetableSettingTab } from './Settings';
 import { taskFunctions } from './TaskManager';
@@ -88,7 +88,7 @@ export default class DynamicTimetable extends Plugin {
     this.registerEditorExtension([
       timetableHeaderExtension(this),
       timeRulerExtension(this),
-      autoSortExtension(this),
+      autoLayoutExtension(this),
     ]);
     await this.layoutReadyHandler();
   }

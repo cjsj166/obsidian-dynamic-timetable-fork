@@ -1,7 +1,8 @@
 // Render model for the unified inline layout: tasks and their memos live in one
 // region (today above the `---` divider, below under it). Each `- [ ]` line is
-// resolved to its projected time; the editor draws that inline on the line and a
-// ruler beside the memo under it. No %%task%% mirror region.
+// resolved to its projected time; a split task also has `%%task:<id> k/n%%`
+// continuation blocks for its later segments. The editor draws the time inline
+// and a ruler beside the memo under each block.
 
 import {
   DEFAULT_PARSE_OPTIONS,
@@ -17,6 +18,7 @@ import {
   projectBelow,
   projectToday,
 } from './projection';
+import { CONT_RE } from './layout';
 import { formatClock } from './time';
 import { formatShort } from './date';
 
@@ -25,7 +27,36 @@ export interface TimelineSegment {
   endMin: number;
 }
 
-/** A task is a render target once it has a time condition (`@`/`;`), valid or not. */
+export interface TimelineRow {
+  /** Absolute 0-based line index of the task line or continuation marker. */
+  lineNo: number;
+  kind: 'today' | 'below';
+  /** True for a `%%task:<id> k/n%%` continuation line (segment >= 2). */
+  isContinuation: boolean;
+  /** 1-based segment index this row represents. */
+  segIndex: number;
+  splitCount: number;
+  status: TaskStatus;
+  name: string | null;
+  fixed: boolean;
+  conflict: boolean;
+  parseError: string | null;
+  hasTime: boolean;
+  timeLabel: string;
+  startMin: number | null;
+  endMin: number | null;
+  segments: TimelineSegment[];
+  endDate: string | null;
+}
+
+export interface Timeline {
+  rows: TimelineRow[];
+  gaps: GapSpan[];
+  /** Sorted line indices of every block start + the divider — ruler boundaries. */
+  boundaries: number[];
+  dividerLineNo: number | null;
+}
+
 function hasTimeCondition(t: TaskLine): boolean {
   return (
     t.anchorMinutes !== null ||
@@ -35,44 +66,18 @@ function hasTimeCondition(t: TaskLine): boolean {
   );
 }
 
-export interface TimelineRow {
-  /** Absolute 0-based line index of the `- [ ]` task line. */
-  lineNo: number;
-  kind: 'today' | 'below';
-  status: TaskStatus;
-  name: string;
-  /** Fixed `@`-time (today) or date-pinned (below). */
-  fixed: boolean;
-  conflict: boolean;
-  parseError: string | null;
-  /** True once the task carries a time condition (`@` or `;`); a render target. */
-  hasTime: boolean;
-  /** e.g. "09:00–11:00, 12:00–14:00" (today) · "→ Mon 6/8 11:00–14:00" (below). */
-  timeLabel: string;
-  // today only
-  startMin: number | null;
-  endMin: number | null;
-  segments: TimelineSegment[];
-  splitCount: number;
-  // below only
-  endDate: string | null;
-}
+const segLabel = (s: TimelineSegment): string =>
+  s.startMin === s.endMin
+    ? formatClock(s.startMin)
+    : `${formatClock(s.startMin)}–${formatClock(s.endMin)}`;
 
-export interface Timeline {
-  rows: TimelineRow[];
-  /** Idle today gaps (display-only), in time order. */
-  gaps: GapSpan[];
-  /** Sorted line indices of every task line + the divider — block boundaries. */
-  boundaries: number[];
-  dividerLineNo: number | null;
-}
-
-/** Resolve the whole note into per-task render rows + today gaps. */
+/** Resolve the whole note into per-block render rows + today gaps. */
 export function resolveTimeline(
   content: string,
   noteDate: string,
   opts: ParseOptions = DEFAULT_PARSE_OPTIONS
 ): Timeline {
+  const lines = content.split('\n');
   const doc = parseDocument(content, opts);
   const fm = doc.frontmatter;
   const today = projectToday(doc.today, fm.dayStartMin, capacityFor(fm, noteDate));
@@ -90,34 +95,68 @@ export function resolveTimeline(
 
   const rows: TimelineRow[] = [];
 
+  // Primary `- [ ]` rows (segment 1 of each today task).
   for (const t of doc.today) {
     const segs = segsByTask.get(t) ?? [];
-    const segments = segs.map((s) => ({ startMin: s.startMin, endMin: s.endMin }));
-    const timeLabel = segments
-      .map((s) =>
-        s.startMin === s.endMin
-          ? formatClock(s.startMin)
-          : `${formatClock(s.startMin)}–${formatClock(s.endMin)}`
-      )
-      .join(', ');
+    const n = segs.length;
+    const seg0 = segs[0];
+    const shown = n >= 2 ? segs.slice(0, 1) : segs;
+    const segments = shown.map((s) => ({ startMin: s.startMin, endMin: s.endMin }));
+    const label = seg0
+      ? segLabel({ startMin: seg0.startMin, endMin: seg0.endMin }) +
+        (n >= 2 ? ` (1/${n})` : '')
+      : '';
     rows.push({
       lineNo: t.lineNo,
       kind: 'today',
+      isContinuation: false,
+      segIndex: 1,
+      splitCount: n || 1,
       status: t.status,
       name: t.name,
-      fixed: segs.some((s) => s.fixed),
+      fixed: seg0 ? seg0.fixed : false,
       conflict: segs.some((s) => s.conflict),
       parseError: t.parseError,
       hasTime: hasTimeCondition(t),
-      timeLabel,
-      startMin: segments.length ? segments[0].startMin : null,
-      endMin: segments.length ? segments[segments.length - 1].endMin : null,
+      timeLabel: label,
+      startMin: seg0 ? seg0.startMin : null,
+      endMin: seg0 ? seg0.endMin : null,
       segments,
-      splitCount: segments.length || 1,
       endDate: null,
     });
   }
 
+  // Continuation rows (`%%task:<id> k/n%%`), mapped to their parent task by id.
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(CONT_RE);
+    if (!m) continue;
+    const id = m[1];
+    const k = Number(m[2]);
+    const task = doc.today.find((t) => t.id === id) ?? null;
+    const segs = task ? segsByTask.get(task) ?? [] : [];
+    const seg = segs[k - 1];
+    const n = segs.length;
+    rows.push({
+      lineNo: i,
+      kind: 'today',
+      isContinuation: true,
+      segIndex: k,
+      splitCount: n || 1,
+      status: task ? task.status : 'open',
+      name: task ? task.name : null,
+      fixed: seg ? seg.fixed : false,
+      conflict: false,
+      parseError: task ? task.parseError : null,
+      hasTime: true,
+      timeLabel: seg ? `${segLabel(seg)} (${k}/${n})` : '?',
+      startMin: seg ? seg.startMin : null,
+      endMin: seg ? seg.endMin : null,
+      segments: seg ? [{ startMin: seg.startMin, endMin: seg.endMin }] : [],
+      endDate: null,
+    });
+  }
+
+  // Below rows.
   const belowByTask = new Map(below.rows.map((r) => [r.task, r]));
   for (const t of doc.below) {
     const r = belowByTask.get(t);
@@ -142,6 +181,9 @@ export function resolveTimeline(
     rows.push({
       lineNo: t.lineNo,
       kind: 'below',
+      isContinuation: false,
+      segIndex: 1,
+      splitCount: 1,
       status: t.status,
       name: t.name,
       fixed: r ? r.pinned : false,
@@ -152,12 +194,11 @@ export function resolveTimeline(
       startMin: null,
       endMin: null,
       segments: [],
-      splitCount: 1,
       endDate: r ? r.endDate : null,
     });
   }
 
-  const boundaries = [...doc.today, ...doc.below].map((t) => t.lineNo);
+  const boundaries = rows.map((r) => r.lineNo);
   if (doc.dividerLineNo !== null) boundaries.push(doc.dividerLineNo);
   boundaries.sort((a, b) => a - b);
 

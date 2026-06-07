@@ -16,11 +16,13 @@ describe('resolveTimeline', () => {
     ].join('\n');
     const { rows } = resolveTimeline(content, '2026-06-02');
 
+    // The primary line shows only segment 1 (the rest become continuation
+    // blocks once laid out); the split count is still reported.
     const big = byName(rows, '긴 작업');
     expect(big.kind).toBe('today');
-    expect(big.timeLabel).toBe('09:00–11:00, 12:00–14:00');
+    expect(big.timeLabel).toBe('09:00–11:00 (1/2)');
     expect(big.startMin).toBe(HM(9));
-    expect(big.endMin).toBe(HM(14));
+    expect(big.endMin).toBe(HM(11));
     expect(big.splitCount).toBe(2);
 
     const m = byName(rows, '미팅');

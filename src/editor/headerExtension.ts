@@ -36,8 +36,9 @@ function timeTokenRanges(
     'g'
   );
   const durRe = new RegExp(`\\s*${sep}\\s*\\S+`, 'g');
+  const idRe = /\s\^[A-Za-z0-9-]+\s*$/g; // trailing block id
   const out: [number, number][] = [];
-  for (const re of [atRe, durRe]) {
+  for (const re of [atRe, durRe, idRe]) {
     let m: RegExpExecArray | null;
     while ((m = re.exec(text)) !== null) {
       out.push([base + m.index, base + m.index + m[0].length]);
@@ -86,6 +87,11 @@ class TimeWidget extends WidgetType {
     if (this.row.fixed) {
       el.createSpan({ cls: 'dt-pin', text: ' 📌' });
     }
+    // A continuation line is fully replaced by this widget, so it must also
+    // carry the task name (a primary line keeps its own text).
+    if (this.row.isContinuation && this.row.name) {
+      el.createSpan({ cls: 'dt-hdr-name', text: ` ${this.row.name}` });
+    }
     if (this.row.parseError) {
       el.createSpan({ cls: 'dt-error-mark', text: ' ⚠' });
       el.title = this.row.parseError;
@@ -109,16 +115,25 @@ function buildDecorations(view: EditorView, opts: ParseOptions): DecorationSet {
     const lineNo = r.lineNo + 1; // core is 0-based, CM is 1-based
     if (lineNo < 1 || lineNo > doc.lines) continue;
     const line = doc.line(lineNo);
-
-    // Time chip, prepended to the line.
-    ranges.push(
-      Decoration.widget({ widget: new TimeWidget(r), side: -1 }).range(line.from)
-    );
-
-    // Hide the raw `@…`/`;…` tokens — but reveal them when the cursor is on
-    // this line so the source stays editable.
     const cursorOnLine = sel.ranges.some(
       (rg) => rg.from <= line.to && rg.to >= line.from
+    );
+
+    if (r.isContinuation) {
+      // Replace the whole `%%task:id k/n%%` marker line with a header; reveal
+      // the raw marker when the cursor is on it.
+      if (!cursorOnLine && line.to > line.from) {
+        ranges.push(
+          Decoration.replace({ widget: new TimeWidget(r) }).range(line.from, line.to)
+        );
+      }
+      continue;
+    }
+
+    // Primary line: prepend a time chip and hide the raw `@…`/`;…`/`^id`
+    // tokens, revealing them when the cursor is on this line.
+    ranges.push(
+      Decoration.widget({ widget: new TimeWidget(r), side: -1 }).range(line.from)
     );
     if (!cursorOnLine) {
       for (const [from, to] of timeTokenRanges(line.text, line.from, opts)) {
