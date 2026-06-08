@@ -23,8 +23,15 @@ function noteDateFor(view: EditorView): string {
   return m ? m[1] : todayISO();
 }
 
-function isManaged(basename: string, content: string): boolean {
-  return DAILY_RE.test(basename) || /^\s*(working_hours|day_start)\s*:/m.test(content);
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function isManaged(basename: string, content: string, opts: ParseOptions): boolean {
+  if (DAILY_RE.test(basename)) return true;
+  if (/^\s*(working_hours|day_start)\s*:/m.test(content)) return true;
+  const d = `${escapeRegex(opts.startTimeDelimiter)}|${escapeRegex(opts.estimateDelimiter)}`;
+  return new RegExp(`^\\s*[-+*]\\s*\\[.\\][^\\n]*(?:${d})`, 'm').test(content);
 }
 
 /** First block-start line (task or continuation) at or after `from`, else `regionTo`. */
@@ -47,7 +54,7 @@ function move(view: EditorView, dir: 'up' | 'down', opts: ParseOptions): boolean
   const info = view.state.field(editorInfoField, false) as
     | { file?: { basename?: string } | null }
     | undefined;
-  if (!isManaged(info?.file?.basename ?? '', content)) return false;
+  if (!isManaged(info?.file?.basename ?? '', content, opts)) return false;
 
   const parsed = parseDocument(content, opts);
   const today = parsed.today;

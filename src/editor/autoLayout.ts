@@ -23,8 +23,17 @@ function noteDateFor(view: EditorView): string {
   return m ? m[1] : todayISO();
 }
 
-function isManaged(basename: string, content: string): boolean {
-  return DAILY_RE.test(basename) || /^\s*(working_hours|day_start)\s*:/m.test(content);
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** Manage daily notes, notes with our frontmatter, or any note that already has
+ *  a task carrying a time condition (`@`/`;`). */
+function isManaged(basename: string, content: string, opts: ParseOptions): boolean {
+  if (DAILY_RE.test(basename)) return true;
+  if (/^\s*(working_hours|day_start)\s*:/m.test(content)) return true;
+  const d = `${escapeRegex(opts.startTimeDelimiter)}|${escapeRegex(opts.estimateDelimiter)}`;
+  return new RegExp(`^\\s*[-+*]\\s*\\[.\\][^\\n]*(?:${d})`, 'm').test(content);
 }
 
 /** The today block the cursor sits in: its layout key + start line, or null. */
@@ -115,9 +124,8 @@ export function autoLayoutExtension(plugin: DynamicTimetable) {
         | { file?: { basename?: string } | null }
         | undefined;
       const content = view.state.doc.toString();
-      if (!isManaged(info?.file?.basename ?? '', content)) return;
-
       const o = opts();
+      if (!isManaged(info?.file?.basename ?? '', content, o)) return;
       const key = cursorBlock(view, o)?.key ?? null;
       if (key !== null && key === lastKey) return; // still in the same block
       applyLayout(view, o);

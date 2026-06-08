@@ -1,16 +1,10 @@
-import { Plugin, WorkspaceLeaf, TFile, Notice } from 'obsidian';
+import { Plugin } from 'obsidian';
 import { runRollover } from './Rollover';
 import { timetableHeaderExtension } from './editor/headerExtension';
 import { timeRulerExtension } from './editor/timeRuler';
 import { autoLayoutExtension } from './editor/autoLayout';
 import { taskMoveKeymap } from './editor/moveTask';
-import { TimetableView } from './TimetableView';
 import { DynamicTimetableSettingTab } from './Settings';
-import { taskFunctions } from './TaskManager';
-import { Task } from './TaskParser';
-import { CommandsManager } from './Commands';
-import { TimetableViewComponentRef } from './TimetableViewComponent';
-import React from 'react';
 
 export interface DynamicTimetableSettings {
   filePath: string | null;
@@ -45,17 +39,8 @@ export interface DynamicTimetableSettings {
     | { category: string; color: string }[];
 }
 
-type ViewType = 'Timetable';
-
 export default class DynamicTimetable extends Plugin {
   settings: DynamicTimetableSettings;
-  targetFile: TFile | null = null;
-  tasks: Task[] = [];
-
-  private commandsManager: CommandsManager;
-  timetableViewComponentRef: React.RefObject<TimetableViewComponentRef>;
-  categoryBackgroundColors: Record<string, string> = {};
-  isCategoryColorsReady: boolean = false;
 
   static DEFAULT_SETTINGS: DynamicTimetableSettings = {
     filePath: null,
@@ -85,14 +70,17 @@ export default class DynamicTimetable extends Plugin {
     console.log('DynamicTimetable: onload');
     await this.initSettings();
     this.initCommands();
-    this.registerViews();
     this.registerEditorExtension([
       taskMoveKeymap(this),
       timetableHeaderExtension(this),
       timeRulerExtension(this),
       autoLayoutExtension(this),
     ]);
-    await this.layoutReadyHandler();
+    this.app.workspace.onLayoutReady(() => {
+      runRollover(this).catch((e) =>
+        console.error('DynamicTimetable: rollover failed', e)
+      );
+    });
   }
 
   async initSettings() {
@@ -101,45 +89,9 @@ export default class DynamicTimetable extends Plugin {
       ...(await this.loadData()),
     };
     this.addSettingTab(new DynamicTimetableSettingTab(this.app, this));
-    this.commandsManager = new CommandsManager(this);
-  }
-
-  async layoutReadyHandler() {
-    const onReady = async () => {
-      await runRollover(this).catch((e) =>
-        console.error('DynamicTimetable: rollover failed', e)
-      );
-      this.initTimetableView();
-    };
-    if (this.app.workspace.layoutReady) {
-      onReady();
-    } else {
-      this.app.workspace.onLayoutReady(onReady);
-    }
-    this.timetableViewComponentRef =
-      React.createRef<TimetableViewComponentRef>();
-  }
-
-  registerViews() {
-    this.registerView(
-      'Timetable',
-      (leaf: WorkspaceLeaf) => new TimetableView(leaf, this)
-    );
   }
 
   initCommands(): void {
-    this.addCommand({
-      id: 'toggle-timetable',
-      name: 'Show/Hide Timetable',
-      callback: () => this.commandsManager.toggleTimetable(),
-    });
-
-    this.addCommand({
-      id: 'init-timetable-view',
-      name: 'Initialize Timetable View',
-      callback: () => this.commandsManager.initializeTimetableView(),
-    });
-
     this.addCommand({
       id: 'roll-over',
       name: 'Roll over incomplete tasks to today',
@@ -152,62 +104,6 @@ export default class DynamicTimetable extends Plugin {
     newValue: DynamicTimetableSettings[T]
   ): Promise<void> {
     this.settings[settingName] = newValue;
-    await this.saveData(this.settings);
-    await this.updateOpenViews('Timetable');
-  }
-
-  async initTimetableView() {
-    this.isCategoryColorsReady = false;
-    if (!this.isTimetableOpen()) {
-      this.openTimetable();
-    } else {
-      this.updateOpenViews('Timetable');
-    }
-    const taskManager = taskFunctions(this);
-    const newTasks = await taskManager.initializeTasks();
-    this.tasks = newTasks;
-  }
-
-  async updateOpenViews(viewType: ViewType) {
-    for (const leaf of this.app.workspace.getLeavesOfType(viewType)) {
-      const view = leaf.view;
-      if (view instanceof TimetableView) {
-        this.checkTargetFile();
-        await view.update();
-      }
-    }
-  }
-
-  isTimetableOpen(): boolean {
-    return this.app.workspace.getLeavesOfType('Timetable').length > 0;
-  }
-
-  async openTimetable() {
-    this.checkTargetFile();
-    const leaf = this.app.workspace.getRightLeaf(false);
-    leaf.setViewState({ type: 'Timetable' });
-    this.app.workspace.revealLeaf(leaf);
-  }
-
-  checkTargetFile() {
-    const abstractFile =
-      this.targetFile === null && this.settings.filePath
-        ? this.app.vault.getAbstractFileByPath(this.settings.filePath)
-        : this.app.workspace.getActiveFile();
-
-    if (abstractFile instanceof TFile) {
-      if (this.targetFile !== abstractFile) {
-        this.targetFile = abstractFile;
-        this.updateFilePathSetting(abstractFile.path);
-      }
-    } else {
-      this.targetFile = null;
-      new Notice('No active file or active file is not a Markdown file');
-    }
-  }
-
-  async updateFilePathSetting(newPath: string): Promise<void> {
-    this.settings.filePath = newPath;
     await this.saveData(this.settings);
   }
 }
