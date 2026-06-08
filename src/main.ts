@@ -7,67 +7,24 @@ import { taskMoveKeymap } from './editor/moveTask';
 import { DynamicTimetableSettingTab } from './Settings';
 
 export interface DynamicTimetableSettings {
-  filePath: string | null;
-  showEstimate: boolean;
-  showStartTime: boolean;
-  showEstimateInTaskName: boolean;
-  showStartTimeInTaskName: boolean;
-  showBufferTime: boolean;
-  showProgressBar: boolean;
-  intervalTime: number;
-  taskEstimateDelimiter: string;
+  /** Delimiter that marks a task start time (default `@`). */
   startTimeDelimiter: string;
-  headerNames: string[];
-  dateDelimiter: string;
-  enableOverdueNotice: boolean;
-  showCompletedTasks: boolean;
-  applyBackgroundColorByCategory: boolean;
-  showCategoryNamesInTask: boolean;
-  categoryColors: { category: string; color: string }[];
-  categoryTransparency: number;
-  showRemainingTime: boolean;
-  showUntilRegex: string;
+  /** Delimiter that marks a task duration (default `;`). */
+  taskEstimateDelimiter: string;
   /** ISO date of the last day rollover ran, for per-day idempotency. */
   lastRollover: string | null;
-  [key: string]:
-    | string
-    | boolean
-    | string[]
-    | number
-    | null
-    | undefined
-    | { category: string; color: string }[];
 }
 
 export default class DynamicTimetable extends Plugin {
   settings: DynamicTimetableSettings;
 
   static DEFAULT_SETTINGS: DynamicTimetableSettings = {
-    filePath: null,
-    showEstimate: false,
-    showStartTime: false,
-    showEstimateInTaskName: false,
-    showStartTimeInTaskName: true,
-    showBufferTime: true,
-    showProgressBar: true,
-    intervalTime: 1,
-    taskEstimateDelimiter: ';',
     startTimeDelimiter: '@',
-    dateDelimiter: '',
-    enableOverdueNotice: true,
-    headerNames: ['Tasks', 'Estimate', 'Start', 'End'],
-    showCompletedTasks: true,
-    applyBackgroundColorByCategory: true,
-    showCategoryNamesInTask: false,
-    categoryColors: [],
-    categoryTransparency: 0.3,
-    showRemainingTime: true,
-    showUntilRegex: '',
+    taskEstimateDelimiter: ';',
     lastRollover: null,
   };
 
   async onload() {
-    console.log('DynamicTimetable: onload');
     await this.initSettings();
     this.initCommands();
     this.registerEditorExtension([
@@ -78,7 +35,7 @@ export default class DynamicTimetable extends Plugin {
     ]);
     this.app.workspace.onLayoutReady(() => {
       runRollover(this).catch((e) =>
-        console.error('DynamicTimetable: rollover failed', e)
+        console.error('Task Time Cascade: rollover failed', e)
       );
     });
   }
