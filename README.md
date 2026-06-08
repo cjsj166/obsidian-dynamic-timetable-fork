@@ -1,53 +1,77 @@
-# Obsidian Dynamic Timetable
+# Task Time Cascade
 
-Dynamic Timetable is an [Obsidian](https://obsidian.md/) plugin that dynamically generates task timetables from Markdown files. This plugin was inspired by [タスクシュート(TaskChute)](https://cyblog.biz/pro/taskchute2/index2.php).
+A daily-planning plugin for [Obsidian](https://obsidian.md/). Write your tasks
+with times right in a daily note and they **auto-cascade into a scheduled
+timeline** — flexible tasks flow in around your fixed appointments, reorder one
+and the rest re-flow, and a time ruler is drawn beside your notes.
 
-[![Image from Gyazo](https://i.gyazo.com/6f1eb253ff398b6cafb3ac8835925753.png)](https://gyazo.com/6f1eb253ff398b6cafb3ac8835925753)
+It is a heavily reworked fork of
+[Dynamic Timetable](https://github.com/L7Cy/obsidian-dynamic-timetable) by L7Cy,
+itself inspired by the [TaskChute](https://cyblog.biz/pro/taskchute2/index2.php)
+method.
+
+## What it does
+
+- **One note, one region.** Write tasks as `- [ ]` lines and put memos
+  (native markdown — images, math, code) directly under each. A body `---`
+  divider splits **today** (clock-scheduled) from **below** (queued onto future
+  days by capacity).
+- **Inline schedule.** Each task line shows its projected time; the raw `@`/`;`
+  source is hidden until your cursor is on the line.
+- **Cascading layout.** Flexible tasks fill the day in order around fixed
+  `@`-time appointments. When the cursor leaves a task, the today region
+  re-orders by start time automatically.
+- **Splitting.** A task that runs across an appointment is split: its `- [ ]`
+  line holds segment 1 (`(1/N)`) and a continuation block is placed at the later
+  segment's time, each with its own memo.
+- **Left time ruler** beside today memos (hour labels + 30-min ticks), `Idle`
+  gap chips, and a red **now** marker.
+- **Reorder by priority:** `Alt+T` then `↑`/`↓` moves a task block (line + memo)
+  among the flexible tasks.
+
+## Task format
+
+```
+- [ ] Task name ; 1:30            # 1h30m of flexible work
+- [ ] Meeting @ 11:00 ; 1:00      # fixed appointment 11:00–12:00
+- [ ] Errand @ 2026-06-10 14:00 ; 2:00   # date-pinned (below region)
+```
+
+- `;` = estimated duration (`H:MM` or whole minutes).
+- `@` = start time (`HH:MM`) or date + time for future-dated tasks.
+- Only tasks carrying a time (`@`/`;`) are scheduled and rendered.
+
+### Frontmatter (optional)
+
+```yaml
+---
+working_hours: 8:00      # daily capacity for the below queue
+day_start: 9:00          # when flexible today work begins
+capacity_overrides:
+  - 2026-06-10 +1:00     # extra/less capacity on a date
+---
+```
+
+The note is auto-managed when it is a daily note (`YYYY-MM-DD.md`), has the
+frontmatter above, or contains any timed task. The today/below divider is a body
+`---`; use `***`/`___` for horizontal rules inside memos.
 
 ## Installation
 
-The plugin is now officially released as a community plugin. You can install it from below.
+Not yet in the community store. To try it now, use
+[BRAT](https://github.com/TfTHacker/obsidian42-brat): add the beta plugin
+`cjsj166/obsidian-dynamic-timetable-fork`, then enable **Task Time Cascade** in
+Community plugins.
+
+## Development
 
 ```
-obsidian://show-plugin?id=dynamic-timetable
+npm install
+npm run build      # tsc + esbuild -> main.js
+npx jest           # pure-core unit tests
+node deploy.mjs [vaultRoot]   # copy build into a vault for testing
 ```
 
-If you want to try the beta version, install it with `L7Cy/obsidian-dynamic-timetable` using [BRAT](https://github.com/TfTHacker/obsidian42-brat).
+## License
 
-## Usage
-
-### Task description format
-
-The plugin supports the following markdown formats for tasks.
-
-```
-- [ ] Task name ; Estimated time
-- [ ] Task name ; Estimated time @ Start time
-- [ ] Task name @ Start time ; Estimated time
-```
-
-### Start time format
-
-The start time is optional and can be added in two formats:
-
-- Time only (e.g., `@ 14:30`)
-- Date and time (e.g., `@ 2023-04-16T14:30`)
-
-### Task completion and interruption
-
-To complete or interrupt a task, execute the commands "Complete Task" or "Interrupt Task." Upon execution, the topmost incomplete task is checked, and the estimated time and scheduled start time are overwritten with the actual time taken and actual start time.
-
-[![Image from Gyazo](https://i.gyazo.com/687f9193d6f01d1eb4f1e05b7ccda84b.gif)](https://gyazo.com/687f9193d6f01d1eb4f1e05b7ccda84b)
-
-In the case of "Interrupt Task," in addition to this, a new task with the same name is created and the remaining time is set to the estimated time.
-
-[![Image from Gyazo](https://i.gyazo.com/526d2f3eaa20b533dffc2093a6758d9b.gif)](https://gyazo.com/526d2f3eaa20b533dffc2093a6758d9b)
-
-### Task text color
-
-When a start time is specified, tasks will have a text color based on the comparison with the end time of the previous task:
-
-- 🟢Green: Indicates that the task is likely to start at the scheduled time, and there may be room to add more tasks before it.
-- 🔴Red: Indicates that it may be difficult to start the task at the scheduled time, and adjustments to previous tasks may be necessary.
-
-This visual cue helps us understand how to effectively adjust our tasks.
+MIT (inherited from the upstream project).

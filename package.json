@@ -1,7 +1,7 @@
 {
-	"name": "dynamic-timetable",
-	"version": "4.6.1",
-	"description": "Calculate the estimated time of completion from the estimated time of the task and dynamically create a timetable.",
+	"name": "task-time-cascade",
+	"version": "1.0.0",
+	"description": "Write tasks with times and they auto-cascade into a scheduled daily timeline — reorder one and the rest re-flow.",
 	"main": "main.js",
 	"scripts": {
 		"dev": "node esbuild.config.mjs",
