@@ -47,7 +47,11 @@ export function buildViewModel(
 ): ViewModel {
   const doc = parseDocument(content, opts);
   const capacityMin = capacityFor(doc.frontmatter, noteDate);
-  const today = projectToday(doc.today, doc.frontmatter.dayStartMin, capacityMin);
+  const today = projectToday(
+    doc.today,
+    doc.frontmatter.dayStartMin,
+    capacityMin
+  );
   const below = projectBelow(doc.below, doc.frontmatter, noteDate);
   return {
     frontmatter: doc.frontmatter,

@@ -27,15 +27,25 @@ function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function isManaged(basename: string, content: string, opts: ParseOptions): boolean {
+function isManaged(
+  basename: string,
+  content: string,
+  opts: ParseOptions
+): boolean {
   if (DAILY_RE.test(basename)) return true;
   if (/^\s*(working_hours|day_start)\s*:/m.test(content)) return true;
-  const d = `${escapeRegex(opts.startTimeDelimiter)}|${escapeRegex(opts.estimateDelimiter)}`;
+  const d = `${escapeRegex(opts.startTimeDelimiter)}|${escapeRegex(
+    opts.estimateDelimiter
+  )}`;
   return new RegExp(`^\\s*[-+*]\\s*\\[.\\][^\\n]*(?:${d})`, 'm').test(content);
 }
 
 /** First block-start line (task or continuation) at or after `from`, else `regionTo`. */
-function nextBlockStart(lines: string[], from: number, regionTo: number): number {
+function nextBlockStart(
+  lines: string[],
+  from: number,
+  regionTo: number
+): number {
   for (let i = from; i < regionTo && i < lines.length; i++) {
     if (isTaskLine(lines[i]) || CONT_RE.test(lines[i])) return i;
   }
@@ -48,7 +58,11 @@ function nextBlockStart(lines: string[], from: number, regionTo: number): number
  * the layout so the schedule (and any split continuations) re-settles. A fixed
  * `@`-time task snaps back to its slot, which is correct.
  */
-function move(view: EditorView, dir: 'up' | 'down', opts: ParseOptions): boolean {
+function move(
+  view: EditorView,
+  dir: 'up' | 'down',
+  opts: ParseOptions
+): boolean {
   const doc = view.state.doc;
   const content = doc.toString();
   const info = view.state.field(editorInfoField, false) as
@@ -71,7 +85,8 @@ function move(view: EditorView, dir: 'up' | 'down', opts: ParseOptions): boolean
   for (let k = 0; k < today.length; k++) if (today[k].lineNo <= cur) ci = k;
   if (ci < 0) return false;
   // Cursor must be in the task's own primary block, not a continuation below it.
-  if (cur >= nextBlockStart(lines, today[ci].lineNo + 1, regionTo)) return false;
+  if (cur >= nextBlockStart(lines, today[ci].lineNo + 1, regionTo))
+    return false;
 
   // Only flexible tasks can be reprioritized — a fixed `@`-time task is anchored,
   // and swapping past a fixed task changes nothing. So step to the adjacent
@@ -108,7 +123,12 @@ function move(view: EditorView, dir: 'up' | 'down', opts: ParseOptions): boolean
     ...lines.slice(hi.end),
   ];
 
-  const layout = layoutToday(swapped.join('\n'), genBlockId, noteDateFor(view), opts);
+  const layout = layoutToday(
+    swapped.join('\n'),
+    genBlockId,
+    noteDateFor(view),
+    opts
+  );
 
   const from = doc.line(bodyOffset + 1).from;
   const to = regionTo < doc.lines ? doc.line(regionTo + 1).from : doc.length;

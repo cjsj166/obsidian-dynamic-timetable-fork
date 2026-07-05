@@ -80,7 +80,11 @@ export function resolveTimeline(
   const lines = content.split('\n');
   const doc = parseDocument(content, opts);
   const fm = doc.frontmatter;
-  const today = projectToday(doc.today, fm.dayStartMin, capacityFor(fm, noteDate));
+  const today = projectToday(
+    doc.today,
+    fm.dayStartMin,
+    capacityFor(fm, noteDate)
+  );
   const below = projectBelow(doc.below, fm, noteDate);
 
   const segsByTask = new Map<TaskLine, TodayRow[]>();
@@ -101,7 +105,10 @@ export function resolveTimeline(
     const n = segs.length;
     const seg0 = segs[0];
     const shown = n >= 2 ? segs.slice(0, 1) : segs;
-    const segments = shown.map((s) => ({ startMin: s.startMin, endMin: s.endMin }));
+    const segments = shown.map((s) => ({
+      startMin: s.startMin,
+      endMin: s.endMin,
+    }));
     const label = seg0
       ? segLabel({ startMin: seg0.startMin, endMin: seg0.endMin }) +
         (n >= 2 ? ` (1/${n})` : '')
@@ -176,7 +183,9 @@ export function resolveTimeline(
     const timeLabel =
       r && r.endDate
         ? `→ ${formatShort(r.endDate)}` +
-          (s !== null && e !== null ? ` ${formatClock(s)}–${formatClock(e)}` : '')
+          (s !== null && e !== null
+            ? ` ${formatClock(s)}–${formatClock(e)}`
+            : '')
         : 'unscheduled';
     rows.push({
       lineNo: t.lineNo,
@@ -202,5 +211,10 @@ export function resolveTimeline(
   if (doc.dividerLineNo !== null) boundaries.push(doc.dividerLineNo);
   boundaries.sort((a, b) => a - b);
 
-  return { rows, gaps: today.gaps, boundaries, dividerLineNo: doc.dividerLineNo };
+  return {
+    rows,
+    gaps: today.gaps,
+    boundaries,
+    dividerLineNo: doc.dividerLineNo,
+  };
 }

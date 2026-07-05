@@ -96,7 +96,13 @@ export function layoutToday(
     return id;
   };
 
-  type Built = { key: string; lines: string[]; startMin: number; ti: number; k: number };
+  type Built = {
+    key: string;
+    lines: string[];
+    startMin: number;
+    ti: number;
+    k: number;
+  };
   const built: Built[] = [];
 
   today.forEach((t, ti) => {
@@ -118,7 +124,10 @@ export function layoutToday(
     for (let k = 2; k <= n; k++) {
       built.push({
         key: `c:${id}:${k}`,
-        lines: [contMarker(id as string, k, n), ...(contMemo.get(`${id}:${k}`) ?? [])],
+        lines: [
+          contMarker(id as string, k, n),
+          ...(contMemo.get(`${id}:${k}`) ?? []),
+        ],
         startMin: starts2[k - 1],
         ti,
         k,
@@ -147,7 +156,8 @@ export function layoutToday(
   ];
 
   const newRegion = blocks.flatMap((b) => b.lines);
-  const changed = newRegion.join('\n') !== lines.slice(bodyOffset, regionToLine).join('\n');
+  const changed =
+    newRegion.join('\n') !== lines.slice(bodyOffset, regionToLine).join('\n');
 
   return { changed, regionFromLine: bodyOffset, regionToLine, blocks };
 }
@@ -165,5 +175,8 @@ export function applyLayoutString(
   const before = lines.slice(0, layout.regionFromLine);
   const after = lines.slice(layout.regionToLine);
   const region = layout.blocks.flatMap((b) => b.lines);
-  return { content: [...before, ...region, ...after].join('\n'), changed: true };
+  return {
+    content: [...before, ...region, ...after].join('\n'),
+    changed: true,
+  };
 }

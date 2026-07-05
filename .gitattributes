@@ -1,0 +1,4 @@
+# Normalize all text files to LF in the repo and working tree.
+# Keeps formatting deterministic across Windows dev and Linux dev servers,
+# and stops prettier (LF) from fighting git's autocrlf on every commit.
+* text=auto eol=lf

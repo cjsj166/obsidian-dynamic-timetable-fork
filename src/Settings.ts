@@ -33,7 +33,10 @@ export class DynamicTimetableSettingTab extends PluginSettingTab {
           .setPlaceholder(';')
           .setValue(this.plugin.settings.taskEstimateDelimiter)
           .onChange(async (value) => {
-            await this.plugin.updateSetting('taskEstimateDelimiter', value || ';');
+            await this.plugin.updateSetting(
+              'taskEstimateDelimiter',
+              value || ';'
+            );
           })
       );
   }

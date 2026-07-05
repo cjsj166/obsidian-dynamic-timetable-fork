@@ -76,7 +76,9 @@ class TimeRulerLayer {
       noteDateFor(this.view),
       this.opts()
     );
-    this.rows = tl.rows.filter((r) => r.kind === 'today' && r.segments.length > 0);
+    this.rows = tl.rows.filter(
+      (r) => r.kind === 'today' && r.segments.length > 0
+    );
     this.boundaries = tl.boundaries;
     this.gaps = tl.gaps;
   }
@@ -88,7 +90,8 @@ class TimeRulerLayer {
 
     const layerRect = this.dom.getBoundingClientRect();
     const docTop = view.documentTop;
-    const toLocalY = (contentY: number): number => docTop + contentY - layerRect.top;
+    const toLocalY = (contentY: number): number =>
+      docTop + contentY - layerRect.top;
 
     const cRect = view.contentDOM.getBoundingClientRect();
     const rulerX = Math.max(2, cRect.left - layerRect.left);
@@ -144,7 +147,12 @@ class TimeRulerLayer {
     let acc = 0;
     r.segments.forEach((s, i) => {
       if (i > 0 && s.startMin % 60 === 0) {
-        this.tick(toLocalY(top + acc * pxPerMin), rulerX, true, formatClock(s.startMin));
+        this.tick(
+          toLocalY(top + acc * pxPerMin),
+          rulerX,
+          true,
+          formatClock(s.startMin)
+        );
       }
       let b = Math.ceil((s.startMin + 1) / 30) * 30;
       for (; b <= s.endMin; b += 30) {
@@ -167,7 +175,9 @@ class TimeRulerLayer {
     const now = new Date();
     const nowMin = now.getHours() * 60 + now.getMinutes();
 
-    const sorted = [...this.rows].sort((a, b) => (a.startMin ?? 0) - (b.startMin ?? 0));
+    const sorted = [...this.rows].sort(
+      (a, b) => (a.startMin ?? 0) - (b.startMin ?? 0)
+    );
     let y: number | null = null;
 
     for (const r of sorted) {
@@ -177,7 +187,9 @@ class TimeRulerLayer {
       let acc = 0;
       for (const s of r.segments) {
         if (nowMin >= s.startMin && nowMin < s.endMin) {
-          y = toLocalY(top + ((acc + (nowMin - s.startMin)) / activeMin) * (bottom - top));
+          y = toLocalY(
+            top + ((acc + (nowMin - s.startMin)) / activeMin) * (bottom - top)
+          );
           break;
         }
         acc += s.endMin - s.startMin;
@@ -194,10 +206,17 @@ class TimeRulerLayer {
 
     const tick = this.add('dt-ruler-now', rulerX - (TICK_HOUR_LEN + 2), y, {});
     tick.style.width = `${TICK_HOUR_LEN + 2}px`;
-    this.add('dt-ruler-nowlabel', rulerX - (TICK_HOUR_LEN + 4), y, { text: 'now' });
+    this.add('dt-ruler-nowlabel', rulerX - (TICK_HOUR_LEN + 4), y, {
+      text: 'now',
+    });
   }
 
-  private tick(y: number, rulerX: number, hour: boolean, label: string | null): void {
+  private tick(
+    y: number,
+    rulerX: number,
+    hour: boolean,
+    label: string | null
+  ): void {
     const len = hour ? TICK_HOUR_LEN : TICK_30_LEN;
     const t = this.add(
       'dt-ruler-tick' + (hour ? ' dt-ruler-tick-hour' : ''),
@@ -207,7 +226,9 @@ class TimeRulerLayer {
     );
     t.style.width = `${len}px`;
     if (label) {
-      this.add('dt-ruler-label', rulerX - TICK_HOUR_LEN - 2, y, { text: label });
+      this.add('dt-ruler-label', rulerX - TICK_HOUR_LEN - 2, y, {
+        text: label,
+      });
     }
   }
 

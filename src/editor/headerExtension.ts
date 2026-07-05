@@ -105,7 +105,11 @@ class TimeWidget extends WidgetType {
 }
 
 function buildDecorations(view: EditorView, opts: ParseOptions): DecorationSet {
-  const { rows } = resolveTimeline(view.state.doc.toString(), noteDateFor(view), opts);
+  const { rows } = resolveTimeline(
+    view.state.doc.toString(),
+    noteDateFor(view),
+    opts
+  );
   const doc = view.state.doc;
   const sel = view.state.selection;
   const ranges: Range<Decoration>[] = [];
@@ -124,7 +128,10 @@ function buildDecorations(view: EditorView, opts: ParseOptions): DecorationSet {
       // the raw marker when the cursor is on it.
       if (!cursorOnLine && line.to > line.from) {
         ranges.push(
-          Decoration.replace({ widget: new TimeWidget(r) }).range(line.from, line.to)
+          Decoration.replace({ widget: new TimeWidget(r) }).range(
+            line.from,
+            line.to
+          )
         );
       }
       continue;
@@ -133,7 +140,9 @@ function buildDecorations(view: EditorView, opts: ParseOptions): DecorationSet {
     // Primary line: prepend a time chip and hide the raw `@…`/`;…`/`^id`
     // tokens, revealing them when the cursor is on this line.
     ranges.push(
-      Decoration.widget({ widget: new TimeWidget(r), side: -1 }).range(line.from)
+      Decoration.widget({ widget: new TimeWidget(r), side: -1 }).range(
+        line.from
+      )
     );
     if (!cursorOnLine) {
       for (const [from, to] of timeTokenRanges(line.text, line.from, opts)) {

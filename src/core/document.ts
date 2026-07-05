@@ -15,9 +15,9 @@ import { isISODate } from './date';
 const CHECKBOX_RE = /^[-+*]\s*\[(.)\]\s*/;
 // Trailing Obsidian block id: whitespace + `^id` at the end of the line.
 const BLOCK_ID_RE = /\s\^([A-Za-z0-9-]+)\s*$/;
-const TAG_RE = /\s#([^\s!#$%&'()*+,.\/:;<=>?@[\\\]^`{|}~]+)/gu;
-const WIKILINK_RE = /\[\[([^\[\]]*\|)?([^\[\]]+)\]\]/g;
-const MDLINK_RE = /\[([^\[\]]+)\]\(.+?\)/g;
+const TAG_RE = /\s#([^\s!#$%&'()*+,./:;<=>?@[\\\]^`{|}~]+)/gu;
+const WIKILINK_RE = /\[\[([^[\]]*\|)?([^[\]]+)\]\]/g;
+const MDLINK_RE = /\[([^[\]]+)\]\(.+?\)/g;
 
 function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -120,7 +120,9 @@ function parseCapacityOverride(raw: string): {
   // Sign is required per spec: "YYYY-MM-DD +H:MM" or "... -H:MM".
   const m = raw.match(/^(\d{4}-\d{2}-\d{2})\s+([+-])(\d+):(\d{2})$/);
   if (!m) {
-    return { error: `capacity_overrides: "${raw}" must be "YYYY-MM-DD +/-H:MM"` };
+    return {
+      error: `capacity_overrides: "${raw}" must be "YYYY-MM-DD +/-H:MM"`,
+    };
   }
   const sign = m[2] === '-' ? -1 : 1;
   const deltaMin = sign * (Number(m[3]) * 60 + Number(m[4]));
@@ -197,9 +199,7 @@ export function parseTaskLine(
   if (durTok) {
     const parsed = parseDuration(durTok[1]);
     if (parsed === null) {
-      errors.push(
-        `invalid duration "${durTok[1]}" (use H:MM or minutes)`
-      );
+      errors.push(`invalid duration "${durTok[1]}" (use H:MM or minutes)`);
     } else {
       durationMin = parsed;
     }
@@ -270,7 +270,9 @@ export function parseDocument(
   if (frontmatterText === null) {
     const looksLikeFrontmatter = bodyLines
       .slice(0, 8)
-      .some((l) => /^\s*(working_hours|day_start|capacity_overrides)\s*:/.test(l));
+      .some((l) =>
+        /^\s*(working_hours|day_start|capacity_overrides)\s*:/.test(l)
+      );
     if (looksLikeFrontmatter) {
       frontmatter.error =
         'frontmatter "---" 펜스가 없습니다 — 설정이 무시되고 기본값이 적용됩니다';

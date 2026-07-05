@@ -29,10 +29,16 @@ function escapeRegex(s: string): string {
 
 /** Manage daily notes, notes with our frontmatter, or any note that already has
  *  a task carrying a time condition (`@`/`;`). */
-function isManaged(basename: string, content: string, opts: ParseOptions): boolean {
+function isManaged(
+  basename: string,
+  content: string,
+  opts: ParseOptions
+): boolean {
   if (DAILY_RE.test(basename)) return true;
   if (/^\s*(working_hours|day_start)\s*:/m.test(content)) return true;
-  const d = `${escapeRegex(opts.startTimeDelimiter)}|${escapeRegex(opts.estimateDelimiter)}`;
+  const d = `${escapeRegex(opts.startTimeDelimiter)}|${escapeRegex(
+    opts.estimateDelimiter
+  )}`;
   return new RegExp(`^\\s*[-+*]\\s*\\[.\\][^\\n]*(?:${d})`, 'm').test(content);
 }
 
@@ -66,12 +72,19 @@ function cursorBlock(
 /** Lay out the today region (split continuations + start-time order), keeping cursor. */
 function applyLayout(view: EditorView, opts: ParseOptions): void {
   const doc = view.state.doc;
-  const layout = layoutToday(doc.toString(), genBlockId, noteDateFor(view), opts);
+  const layout = layoutToday(
+    doc.toString(),
+    genBlockId,
+    noteDateFor(view),
+    opts
+  );
   if (!layout.changed) return;
 
   const from = doc.line(layout.regionFromLine + 1).from;
   const to =
-    layout.regionToLine < doc.lines ? doc.line(layout.regionToLine + 1).from : doc.length;
+    layout.regionToLine < doc.lines
+      ? doc.line(layout.regionToLine + 1).from
+      : doc.length;
   const insert =
     layout.blocks.flatMap((b) => b.lines).join('\n') +
     (layout.regionToLine < doc.lines ? '\n' : '');
