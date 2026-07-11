@@ -7,10 +7,10 @@
 
 | # | 문서 | 요약 | 상태 |
 |---|---|---|---|
-| 01 | [dev-server-migration](01-dev-server-migration.md) | 개발을 서버로 옮겨 자율 실행 기반 마련 | ❌ 미착수 |
-| 02 | [dead-code-cleanup](02-dead-code-cleanup.md) | rollover 뭉치 + `core/viewmodel.ts` 제거 | ❌ 미착수 |
-| 03 | [fmt-lint](03-fmt-lint.md) | prettier/eslint + pre-commit 훅 | ⏳ 거의 완료 |
-| 04 | [axis-b](04-axis-b.md) | 기능 정합성: 시간미지정 todo=메모 재정의 (TDD) | ❌ 미착수 |
+| 01 | [dev-server-migration](01-dev-server-migration.md) | 개발을 서버로 옮겨 자율 실행 기반 마련 | ✅ 완료 |
+| 02 | [dead-code-cleanup](02-dead-code-cleanup.md) | rollover 뭉치 + `core/viewmodel.ts` 제거 | ✅ 완료 |
+| 03 | [fmt-lint](03-fmt-lint.md) | prettier/eslint + pre-commit 훅 | ✅ 완료 |
+| 04 | [axis-b](04-axis-b.md) | 기능 정합성: 시간미지정 todo=메모 재정의 (TDD) | ✅ 완료 |
 | 05 | [axis-a](05-axis-a.md) | 커뮤니티 서버 등재/노출 | ❌ 미착수 |
 | 06 | [new-features](06-new-features.md) | 끝시각 지정 + 고정스케줄 +N일 오프셋 | ❌ 미착수 |
 
