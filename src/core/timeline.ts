@@ -10,7 +10,7 @@ import {
   TaskLine,
   TaskStatus,
 } from './types';
-import { parseDocument } from './document';
+import { hasTimeCondition, parseDocument } from './document';
 import {
   GapSpan,
   TodayRow,
@@ -55,15 +55,6 @@ export interface Timeline {
   /** Sorted line indices of every block start + the divider — ruler boundaries. */
   boundaries: number[];
   dividerLineNo: number | null;
-}
-
-function hasTimeCondition(t: TaskLine): boolean {
-  return (
-    t.anchorMinutes !== null ||
-    t.anchorDate !== null ||
-    t.durationMin !== null ||
-    t.parseError !== null
-  );
 }
 
 const segLabel = (s: TimelineSegment): string =>

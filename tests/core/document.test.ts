@@ -3,6 +3,7 @@ import {
   parseFrontmatter,
   parseTaskLine,
   splitFrontmatter,
+  isTimedTaskLine,
 } from '../../src/core/document';
 import { DEFAULT_WORKING_HOURS_MIN } from '../../src/core/types';
 
@@ -75,6 +76,41 @@ describe('parseTaskLine', () => {
     expect(parseTaskLine('- [ ] a ; 1:30', 0)!.parseError).toBeNull();
     expect(parseTaskLine('- [ ] a ; 1:30', 0)!.durationMin).toBe(90);
     expect(parseTaskLine('- [ ] a ; 90', 0)!.parseError).toBeNull();
+  });
+});
+
+describe('isTimedTaskLine', () => {
+  it('returns true for @ time', () => {
+    expect(isTimedTaskLine('- [ ] 출근 @ 9:00')).toBe(true);
+  });
+
+  it('returns true for ; duration only', () => {
+    expect(isTimedTaskLine('- [ ] 메일 ; 30')).toBe(true);
+  });
+
+  it('returns true for parse-error time (still a timed task)', () => {
+    expect(isTimedTaskLine('- [ ] thing @ 25:00')).toBe(true);
+  });
+
+  it('returns false for plain checkbox without time', () => {
+    expect(isTimedTaskLine('- [ ] 그냥 할 일')).toBe(false);
+  });
+
+  it('returns false for nested indented checkbox without time', () => {
+    expect(isTimedTaskLine('  - [ ] nested todo')).toBe(false);
+  });
+
+  it('returns false for done checkbox without time', () => {
+    expect(isTimedTaskLine('- [x] done thing')).toBe(false);
+  });
+
+  it('returns false for email @ in name (not a time)', () => {
+    expect(isTimedTaskLine('- [ ] mail foo@bar.com')).toBe(false);
+  });
+
+  it('returns false for non-checkbox lines', () => {
+    expect(isTimedTaskLine('just a note')).toBe(false);
+    expect(isTimedTaskLine('# heading')).toBe(false);
   });
 });
 
@@ -175,6 +211,54 @@ describe('parseDocument', () => {
       ['- [ ] a ; 30', '', 'some memo', '- [ ] b ; 30'].join('\n')
     );
     expect(doc.today.map((t) => t.name)).toEqual(['a', 'b']);
+  });
+
+  it('excludes untimedcheckbox lines from today/below', () => {
+    const content = [
+      '- [ ] 출근 @ 9:00',
+      '- [ ] 그냥 할 일',
+      '- [ ] 메일 ; 0:30',
+    ].join('\n');
+    const doc = parseDocument(content);
+    expect(doc.today.map((t) => t.name)).toEqual(['출근', '메일']);
+  });
+
+  it('excludes nested untimed checkboxes', () => {
+    const content = [
+      '- [ ] 출근 @ 9:00',
+      '  - [ ] nested memo box',
+      '- [ ] 메일 ; 0:30',
+    ].join('\n');
+    const doc = parseDocument(content);
+    expect(doc.today.map((t) => t.name)).toEqual(['출근', '메일']);
+  });
+
+  it('preserves lineNo of surviving timed tasks', () => {
+    const content = ['- [ ] A @ 9:00', '- [ ] untimed', '- [ ] B ; 1:00'].join(
+      '\n'
+    );
+    const doc = parseDocument(content);
+    expect(doc.today[0].lineNo).toBe(0);
+    expect(doc.today[1].lineNo).toBe(2);
+  });
+
+  it('excludes top-level untimed todos (no preceding timed task)', () => {
+    const content = ['- [ ] orphan untimed', '- [ ] A @ 9:00'].join('\n');
+    const doc = parseDocument(content);
+    expect(doc.today.map((t) => t.name)).toEqual(['A']);
+  });
+
+  it('does not let --- adjacent untimed become divider', () => {
+    const content = [
+      '- [ ] A @ 9:00',
+      '- [ ] untimed memo',
+      '---',
+      '- [ ] below ; 1:00',
+    ].join('\n');
+    const doc = parseDocument(content);
+    expect(doc.hasDivider).toBe(true);
+    expect(doc.today.map((t) => t.name)).toEqual(['A']);
+    expect(doc.below.map((t) => t.name)).toEqual(['below']);
   });
 
   it('warns when frontmatter keys appear without the opening --- fence', () => {

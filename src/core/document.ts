@@ -137,6 +137,23 @@ export function isTaskLine(line: string): boolean {
   return CHECKBOX_RE.test(line.trim());
 }
 
+export function hasTimeCondition(t: TaskLine): boolean {
+  return (
+    t.anchorMinutes !== null ||
+    t.anchorDate !== null ||
+    t.durationMin !== null ||
+    t.parseError !== null
+  );
+}
+
+export function isTimedTaskLine(
+  line: string,
+  opts: ParseOptions = DEFAULT_PARSE_OPTIONS
+): boolean {
+  const t = parseTaskLine(line, 0, opts);
+  return t !== null && hasTimeCondition(t);
+}
+
 /**
  * Parse one `- [ ]` line into a TaskLine. Returns null if `line` is not a task
  * line. `lineNo` is the absolute line index in the document.
@@ -298,6 +315,9 @@ export function parseDocument(
     }
     const task = parseTaskLine(bodyLines[i], bodyOffset + i, opts);
     if (!task) {
+      continue;
+    }
+    if (!hasTimeCondition(task)) {
       continue;
     }
     if (i < todayEnd) {

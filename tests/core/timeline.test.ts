@@ -47,18 +47,51 @@ describe('resolveTimeline', () => {
     expect(boundaries.length).toBe(2);
   });
 
-  it('flags only tasks with a time condition, and labels a 0-min task as one time', () => {
+  it('excludes untimed checkboxes and labels a 0-min task as one time', () => {
     const content = [
       '---',
       'day_start: 9:00',
       '---',
       '- [ ] 출근 @ 9:00', // anchor, no duration → single-time label
-      '- [ ] 그냥 할 일', // no @ or ; → not a render target
+      '- [ ] 그냥 할 일', // no @ or ; → excluded by parseDocument
     ].join('\n');
     const { rows } = resolveTimeline(content, '2026-06-02');
     expect(byName(rows, '출근').hasTime).toBe(true);
     expect(byName(rows, '출근').timeLabel).toBe('09:00');
-    expect(byName(rows, '그냥 할 일').hasTime).toBe(false);
+    expect(byName(rows, '그냥 할 일')).toBeUndefined();
+  });
+
+  it('boundaries only count timed tasks (condition #3)', () => {
+    const content = [
+      '---',
+      'day_start: 9:00',
+      '---',
+      '- [ ] A @ 9:00 ; 1:00',
+      '- [ ] untimed memo',
+      '- [ ] B @ 10:00 ; 1:00',
+    ].join('\n');
+    const { rows, boundaries } = resolveTimeline(content, '2026-06-02');
+    expect(rows).toHaveLength(2);
+    expect(boundaries).toHaveLength(2);
+    const aLine = rows.find((r) => r.name === 'A')!.lineNo;
+    const bLine = rows.find((r) => r.name === 'B')!.lineNo;
+    expect(boundaries.find((n) => n > aLine)).toBe(bLine);
+  });
+
+  it('consecutive untimed checkboxes do not create boundaries', () => {
+    const content = [
+      '---',
+      'day_start: 9:00',
+      '---',
+      '- [ ] A @ 9:00 ; 1:00',
+      '- [ ] memo1',
+      '- [ ] memo2',
+      '- [ ] memo3',
+      '- [ ] B @ 10:00 ; 0:30',
+    ].join('\n');
+    const { rows, boundaries } = resolveTimeline(content, '2026-06-02');
+    expect(rows).toHaveLength(2);
+    expect(boundaries).toHaveLength(2);
   });
 
   it('labels below tasks with date and projected clock range', () => {
