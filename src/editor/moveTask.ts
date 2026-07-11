@@ -3,8 +3,9 @@ import { Prec } from '@codemirror/state';
 import { editorInfoField } from 'obsidian';
 import type DynamicTimetable from '../main';
 import { ParseOptions } from '../core/types';
-import { isTaskLine, parseDocument, splitFrontmatter } from '../core/document';
-import { CONT_RE, layoutToday } from '../core/layout';
+import { parseDocument, splitFrontmatter } from '../core/document';
+import { layoutToday } from '../core/layout';
+import { nextTimedBlockStart } from '../core/edit';
 import { todayISO } from '../core/date';
 
 const ISO_RE = /(\d{4}-\d{2}-\d{2})/;
@@ -40,18 +41,6 @@ function isManaged(
   return new RegExp(`^\\s*[-+*]\\s*\\[.\\][^\\n]*(?:${d})`, 'm').test(content);
 }
 
-/** First block-start line (task or continuation) at or after `from`, else `regionTo`. */
-function nextBlockStart(
-  lines: string[],
-  from: number,
-  regionTo: number
-): number {
-  for (let i = from; i < regionTo && i < lines.length; i++) {
-    if (isTaskLine(lines[i]) || CONT_RE.test(lines[i])) return i;
-  }
-  return regionTo;
-}
-
 /**
  * Move the cursor's today task block (its `- [ ]` line + memo) up/down one
  * priority. We swap it with the adjacent today task in document order, then run
@@ -85,7 +74,7 @@ function move(
   for (let k = 0; k < today.length; k++) if (today[k].lineNo <= cur) ci = k;
   if (ci < 0) return false;
   // Cursor must be in the task's own primary block, not a continuation below it.
-  if (cur >= nextBlockStart(lines, today[ci].lineNo + 1, regionTo))
+  if (cur >= nextTimedBlockStart(lines, today[ci].lineNo + 1, regionTo, opts))
     return false;
 
   // Only flexible tasks can be reprioritized — a fixed `@`-time task is anchored,
@@ -110,7 +99,10 @@ function move(
 
   const range = (k: number) => {
     const start = today[k].lineNo;
-    return { start, end: nextBlockStart(lines, start + 1, regionTo) };
+    return {
+      start,
+      end: nextTimedBlockStart(lines, start + 1, regionTo, opts),
+    };
   };
   const a = range(ci);
   const b = range(target);

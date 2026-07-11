@@ -2,7 +2,9 @@
 // Everything else in the note (prose, blank lines, headings, the divider) is
 // left untouched — only the dragged block moves.
 
-import { isTaskLine } from './document';
+import { isTaskLine, isTimedTaskLine } from './document';
+import { DEFAULT_PARSE_OPTIONS, ParseOptions } from './types';
+import { CONT_RE } from './layout';
 
 /**
  * Move the line at `fromIndex` so it sits at `toIndex` in the resulting
@@ -106,4 +108,34 @@ export function dropIndex(targetLineNo: number, after: boolean): number {
 /** Append a `---` divider line at the end of the document. */
 export function appendDivider(content: string): string {
   return content + '\n---';
+}
+
+/**
+ * First timed block-start line (isTimedTaskLine or CONT_RE) at or after `from`
+ * within `[from, regionTo)`. Returns `regionTo` if none found.
+ * A `---` divider also acts as a boundary (returns its index).
+ */
+export function nextTimedBlockStart(
+  lines: string[],
+  from: number,
+  regionTo: number,
+  opts: ParseOptions = DEFAULT_PARSE_OPTIONS
+): number {
+  for (let i = from; i < regionTo && i < lines.length; i++) {
+    if (lines[i].trim() === '---') return i;
+    if (isTimedTaskLine(lines[i], opts) || CONT_RE.test(lines[i])) return i;
+  }
+  return regionTo;
+}
+
+export function taskBlockRange(
+  lines: string[],
+  startIdx: number,
+  regionTo: number,
+  opts: ParseOptions = DEFAULT_PARSE_OPTIONS
+): { start: number; end: number } {
+  return {
+    start: startIdx,
+    end: nextTimedBlockStart(lines, startIdx + 1, regionTo, opts),
+  };
 }

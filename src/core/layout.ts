@@ -6,7 +6,7 @@
 // plain today-sort. Pure; the editor applies it as one cursor-safe change.
 
 import { DEFAULT_PARSE_OPTIONS, ParseOptions, TaskLine } from './types';
-import { isTaskLine, parseDocument, splitFrontmatter } from './document';
+import { isTimedTaskLine, parseDocument, splitFrontmatter } from './document';
 import { capacityFor, projectToday } from './projection';
 
 /** A `%%task:<id> k/n%%` continuation marker (segment k of n, k >= 2). */
@@ -55,7 +55,8 @@ export function layoutToday(
   // Block-start lines in the region: `- [ ]` tasks and continuation markers.
   const starts: number[] = [];
   for (let i = bodyOffset; i < regionToLine && i < lines.length; i++) {
-    if (isTaskLine(lines[i]) || CONT_RE.test(lines[i])) starts.push(i);
+    if (isTimedTaskLine(lines[i], opts) || CONT_RE.test(lines[i]))
+      starts.push(i);
   }
   if (starts.length === 0) return empty;
 

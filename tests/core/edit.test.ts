@@ -3,6 +3,8 @@ import {
   dropIndex,
   moveBlock,
   taskBlockEnd,
+  nextTimedBlockStart,
+  taskBlockRange,
 } from '../../src/core/edit';
 
 const doc = (lines: string[]) => lines.join('\n');
@@ -54,12 +56,7 @@ describe('dropIndex', () => {
 
 describe('taskBlockEnd', () => {
   it('includes indented child lines', () => {
-    const lines = [
-      '- [ ] A',
-      '  note under A',
-      '  - subitem',
-      '- [ ] B',
-    ];
+    const lines = ['- [ ] A', '  note under A', '  - subitem', '- [ ] B'];
     expect(taskBlockEnd(lines, 0)).toBe(3); // A + 2 children, stops at B
     expect(taskBlockEnd(lines, 3)).toBe(4); // B alone
   });
@@ -81,14 +78,94 @@ describe('taskBlockEnd', () => {
   });
 });
 
+describe('nextTimedBlockStart', () => {
+  it('absorbs untimed memo checkboxes into preceding timed task', () => {
+    const lines = [
+      '- [ ] A @ 9:00 ; 1:00',
+      '- [ ] untimed memo',
+      '- [ ] B @ 10:00 ; 0:30',
+    ];
+    expect(nextTimedBlockStart(lines, 1, 3)).toBe(2);
+  });
+
+  it('absorbs consecutive untimed checkboxes', () => {
+    const lines = [
+      '- [ ] A @ 9:00 ; 1:00',
+      '- [ ] memo1',
+      '- [ ] memo2',
+      '- [ ] B @ 10:00 ; 0:30',
+    ];
+    expect(nextTimedBlockStart(lines, 1, 4)).toBe(3);
+  });
+
+  it('last task with trailing untimed returns regionTo', () => {
+    const lines = ['- [ ] A @ 9:00 ; 1:00', '- [ ] trailing memo'];
+    expect(nextTimedBlockStart(lines, 1, 2)).toBe(2);
+  });
+
+  it('stops at CONT_RE marker', () => {
+    const lines = [
+      '- [ ] A @ 9:00 ; 4:00 ^abc',
+      'memo line',
+      '%%task:abc 2/2%%',
+    ];
+    expect(nextTimedBlockStart(lines, 1, 3)).toBe(2);
+  });
+
+  it('handles prose + untimed mix as memo', () => {
+    const lines = [
+      '- [ ] A @ 9:00 ; 1:00',
+      'prose note',
+      '- [ ] untimed',
+      '- [ ] B ; 0:30',
+    ];
+    expect(nextTimedBlockStart(lines, 1, 4)).toBe(3);
+  });
+
+  it('skips top-level untimed when looking for first block', () => {
+    const lines = ['- [ ] orphan untimed', '- [ ] A @ 9:00 ; 1:00'];
+    expect(nextTimedBlockStart(lines, 0, 2)).toBe(1);
+  });
+
+  it('stops at divider line', () => {
+    const lines = [
+      '- [ ] A @ 9:00 ; 1:00',
+      '- [ ] memo',
+      '---',
+      '- [ ] B ; 1:00',
+    ];
+    expect(nextTimedBlockStart(lines, 1, 4)).toBe(2);
+  });
+
+  it('treats done untimed checkbox as memo too', () => {
+    const lines = [
+      '- [ ] A @ 9:00 ; 1:00',
+      '- [x] done untimed',
+      '- [ ] B @ 10:00 ; 0:30',
+    ];
+    expect(nextTimedBlockStart(lines, 1, 3)).toBe(2);
+  });
+});
+
+describe('taskBlockRange', () => {
+  it('returns start to next timed block start', () => {
+    const lines = [
+      '- [ ] A @ 9:00 ; 1:00',
+      '- [ ] untimed memo',
+      '- [ ] B @ 10:00 ; 0:30',
+    ];
+    expect(taskBlockRange(lines, 0, 3)).toEqual({ start: 0, end: 2 });
+  });
+
+  it('extends to regionTo for last task', () => {
+    const lines = ['- [ ] A @ 9:00 ; 1:00', '- [ ] trailing memo'];
+    expect(taskBlockRange(lines, 0, 2)).toEqual({ start: 0, end: 2 });
+  });
+});
+
 describe('moveBlock', () => {
   it('moves a task and its children together', () => {
-    const lines = [
-      '- [ ] A',
-      '  child A',
-      '- [ ] B',
-      '  child B',
-    ];
+    const lines = ['- [ ] A', '  child A', '- [ ] B', '  child B'];
     // move block B (index 2..4) above A (index 0).
     expect(moveBlock(lines.join('\n'), 2, 4, 0)).toBe(
       ['- [ ] B', '  child B', '- [ ] A', '  child A'].join('\n')

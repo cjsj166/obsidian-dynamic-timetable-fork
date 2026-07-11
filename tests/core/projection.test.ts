@@ -33,26 +33,26 @@ describe('projectToday — fixture 1 (fixed appointments + flexible fill)', () =
   );
 
   it('places fixed appointments at their anchors', () => {
-    expect([seg(proj.rows, '점심시간').startMin, seg(proj.rows, '점심시간').endMin]).toEqual([
-      HM(11, 45),
-      HM(12, 45),
-    ]);
-    expect([seg(proj.rows, '할 거 1').startMin, seg(proj.rows, '할 거 1').endMin]).toEqual([
-      HM(13),
-      HM(15),
-    ]);
+    expect([
+      seg(proj.rows, '점심시간').startMin,
+      seg(proj.rows, '점심시간').endMin,
+    ]).toEqual([HM(11, 45), HM(12, 45)]);
+    expect([
+      seg(proj.rows, '할 거 1').startMin,
+      seg(proj.rows, '할 거 1').endMin,
+    ]).toEqual([HM(13), HM(15)]);
     expect(seg(proj.rows, '점심시간').fixed).toBe(true);
   });
 
   it('fills flexible work from day_start into the early gap', () => {
-    expect([seg(proj.rows, '메일 확인').startMin, seg(proj.rows, '메일 확인').endMin]).toEqual([
-      HM(9),
-      HM(9, 10),
-    ]);
-    expect([seg(proj.rows, '할 거 2').startMin, seg(proj.rows, '할 거 2').endMin]).toEqual([
-      HM(9, 10),
-      HM(10, 10),
-    ]);
+    expect([
+      seg(proj.rows, '메일 확인').startMin,
+      seg(proj.rows, '메일 확인').endMin,
+    ]).toEqual([HM(9), HM(9, 10)]);
+    expect([
+      seg(proj.rows, '할 거 2').startMin,
+      seg(proj.rows, '할 거 2').endMin,
+    ]).toEqual([HM(9, 10), HM(10, 10)]);
   });
 
   it('sorts rows by start time', () => {
@@ -147,14 +147,15 @@ describe('projectToday — idle gaps', () => {
 
 describe('projectToday — overlapping fixed appointments', () => {
   const doc = parseDocument(
-    [
-      '---',
-      '---',
-      '- [ ] A @ 10:00 ; 2:00',
-      '- [ ] B @ 11:00 ; 1:00',
-    ].join('\n')
+    ['---', '---', '- [ ] A @ 10:00 ; 2:00', '- [ ] B @ 11:00 ; 1:00'].join(
+      '\n'
+    )
   );
-  const proj = projectToday(doc.today, HM(9), capacityFor(doc.frontmatter, 'x'));
+  const proj = projectToday(
+    doc.today,
+    HM(9),
+    capacityFor(doc.frontmatter, 'x')
+  );
 
   it('flags the conflict', () => {
     expect(proj.hasConflict).toBe(true);
@@ -172,7 +173,12 @@ describe('projectBelow — fixture 3 (simple queue)', () => {
     ].join('\n')
   );
   const doc = parseDocument(
-    ['---', '- [ ] 할 거 3 ; 7:00', '- [ ] 할 거 4 ; 8:00', '- [ ] 할 거 5 ; 8:00'].join('\n')
+    [
+      '---',
+      '- [ ] 할 거 3 ; 7:00',
+      '- [ ] 할 거 4 ; 8:00',
+      '- [ ] 할 거 5 ; 8:00',
+    ].join('\n')
   );
   const proj = projectBelow(doc.below, fm, '2026-06-01');
 
@@ -199,19 +205,17 @@ describe('projectBelow — fixture 4 (date-pinned)', () => {
   const proj = projectBelow(doc.below, fm, '2026-06-01');
 
   it('reserves pinned time and fills the rest around it', () => {
-    const byName = Object.fromEntries(
-      proj.rows.map((r) => [r.task.name, r])
-    );
+    const byName = Object.fromEntries(proj.rows.map((r) => [r.task.name, r]));
     expect(byName['거래처 미팅'].pinned).toBe(true);
     expect(byName['거래처 미팅'].endDate).toBe('2026-06-03');
-    expect([byName['할 거 3'].endDate, byName['할 거 3'].endHoursIntoDayMin]).toEqual([
-      '2026-06-02',
-      HM(5),
-    ]);
-    expect([byName['할 거 4'].endDate, byName['할 거 4'].endHoursIntoDayMin]).toEqual([
-      '2026-06-03',
-      HM(6),
-    ]);
+    expect([
+      byName['할 거 3'].endDate,
+      byName['할 거 3'].endHoursIntoDayMin,
+    ]).toEqual(['2026-06-02', HM(5)]);
+    expect([
+      byName['할 거 4'].endDate,
+      byName['할 거 4'].endHoursIntoDayMin,
+    ]).toEqual(['2026-06-03', HM(6)]);
   });
 });
 
@@ -223,5 +227,22 @@ describe('projectBelow — over-booked pinned date', () => {
   const proj = projectBelow(doc.below, fm, '2026-06-01');
   it('flags the date', () => {
     expect(proj.overBookedDates).toEqual(['2026-06-03']);
+  });
+});
+
+describe('projectToday — untimed checkboxes excluded', () => {
+  it('does not create TodayRow for untimed today tasks', () => {
+    const doc = parseDocument(
+      [
+        '---',
+        'day_start: 9:00',
+        '---',
+        '- [ ] A @ 9:00 ; 1:00',
+        '- [ ] untimed memo',
+        '- [ ] B ; 0:30',
+      ].join('\n')
+    );
+    const proj = projectToday(doc.today, doc.frontmatter.dayStartMin, HM(7));
+    expect(proj.rows.map((r) => r.task.name)).toEqual(['A', 'B']);
   });
 });

@@ -2,7 +2,11 @@ import { EditorView, ViewUpdate } from '@codemirror/view';
 import { editorInfoField } from 'obsidian';
 import type DynamicTimetable from '../main';
 import { ParseOptions } from '../core/types';
-import { isTaskLine, parseDocument, splitFrontmatter } from '../core/document';
+import {
+  isTimedTaskLine,
+  parseDocument,
+  splitFrontmatter,
+} from '../core/document';
 import { CONT_RE, layoutToday } from '../core/layout';
 import { todayISO } from '../core/date';
 
@@ -58,10 +62,10 @@ function cursorBlock(
 
   let bs = -1;
   for (let i = bodyOffset; i <= cur && i < lines.length; i++) {
-    if (isTaskLine(lines[i]) || CONT_RE.test(lines[i])) bs = i;
+    if (isTimedTaskLine(lines[i], opts) || CONT_RE.test(lines[i])) bs = i;
   }
   if (bs < 0) return { key: '__pre__', startLine: bodyOffset };
-  if (isTaskLine(lines[bs])) {
+  if (isTimedTaskLine(lines[bs], opts)) {
     const ti = parsed.today.findIndex((t) => t.lineNo === bs);
     return { key: `p:${ti}`, startLine: bs };
   }
